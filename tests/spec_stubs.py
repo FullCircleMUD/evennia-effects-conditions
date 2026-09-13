@@ -110,6 +110,8 @@ class GoodEffects(NamedEffect):
         escape_hook=_recording_escape,
         on_remove=_recording_on_remove,
     )
+    # Names an external companion script for clear_all_effects to stop (CL-04).
+    SCRIPTED = EffectSpec("scripted", companion_script_key="companion_stub")
 
 
 class EmptyConditions(Condition):

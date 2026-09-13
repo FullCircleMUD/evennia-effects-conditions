@@ -25,6 +25,8 @@ Behaviour is agreed here first, before any test or code — see
 | `CN` | The conditions mixin — ref counting, transition messaging, the broadcast seam |
 | `EF` | The effects mixin core — apply, remove, query, the recalculate hook |
 | `LC` | Lifecycles — advancing countdowns, clearing them, the wall-clock timer |
+| `BK` | The break verbs — forced, silent removal on a trigger the consumer owns |
+| `CL` | `clear_all_effects()` — the silent full strip for death-shaped moments |
 
 ## Fixtures
 
@@ -239,6 +241,57 @@ refuses an undeclared name, which is a typo by the same argument as CN-10.
 | LC-11 | Removing a wall-clock effect stops and deletes its timer script | `test_lc_11_removal_stops_and_deletes_the_timer` |
 | LC-12 | `get_effect_remaining_seconds()` counts down from the duration for a wall-clock record, and is None for other lifecycles and absent effects | `test_lc_12_remaining_seconds_counts_down_for_the_wall_clock_only` |
 | LC-13 | A wall-clock apply with `duration=None` starts no timer — permanent until removed | `test_lc_13_a_wall_clock_apply_with_no_duration_starts_no_timer` |
+
+## BK — the break verbs
+
+Forced removal from [design.md](design.md) § Ending things early. `break_effect(key)` is what
+"attacking shatters your invisibility" calls: it **zeroes** the condition's ref count — concealment
+ends, whoever granted it — drops the record, stops the timer, fires `at_effects_changed()` where a
+payload existed, and sends nothing. The caller knows what just happened and says so itself.
+
+`break_effects(keys, excluded=())` is the plural for "this action ends these": the caller supplies
+the set (game policy, kept in the consumer's repo), and the return names what actually broke, in
+order, so messaging and consequences ride on the result. A key that is only a bare condition falls
+back to zeroing the refs silently. Keys and exclusions accept members of either catalogue or raw
+strings; a key declared in neither is refused.
+
+**Two ported semantics that look like bugs and are not:**
+
+- **Activity is condition-first.** An effect whose spec declares a condition counts as breakable
+  while the *condition* is active, record or no record — and conversely, a record whose condition
+  was independently zeroed reports False and stays. A live consequence of the no-reconciliation
+  limit (design.md § Stated limits), pinned so nobody "fixes" it.
+- **Forced strips skip `on_remove`.** The removal callback belongs to the normal removal path;
+  `break_effect` and `clear_all_effects()` end things without it, exactly as the extracted system
+  did. Stated here and in the API docs.
+
+| ID | Case | Test function |
+|---|---|---|
+| BK-01 | Break zeroes a multi-source condition entirely — three grants, one break, count 0 | `test_bk_01_break_zeroes_a_multi_source_condition` |
+| BK-02 | Break is silent and total — no messages either person, record gone, ref zeroed | `test_bk_02_break_is_silent_and_total` |
+| BK-03 | Breaking a wall-clock effect stops and deletes its timer | `test_bk_03_break_stops_the_wall_clock_timer` |
+| BK-04 | Break fires `at_effects_changed()` where a payload existed, and never `on_remove` | `test_bk_04_break_fires_the_hook_and_never_on_remove` |
+| BK-05 | Condition-first activity, both directions — a bare condition breaks through its effect's key; a record whose condition was independently zeroed reports False and stays | `test_bk_05_condition_first_activity_in_both_directions` |
+| BK-06 | Breaking an inactive effect returns False; an undeclared key is refused | `test_bk_06_inactive_is_false_and_undeclared_is_refused` |
+| BK-07 | `break_effects` breaks the caller's set, skips `excluded` and the inactive, returns the broken keys in order — members and strings alike | `test_bk_07_break_effects_breaks_the_set_and_reports_in_order` |
+| BK-08 | The bare-condition fallback zeroes silently — a condition that is no declared effect still breaks | `test_bk_08_the_bare_condition_fallback_zeroes_silently` |
+
+## CL — the full strip
+
+`clear_all_effects()` from [design.md](design.md) § Ending things early: every record stripped
+silently, for moments where a bigger announcement carries the context — death, a remort. Bare
+condition grants survive (a dwarf keeps darkvision through dying); record-contributed refs
+decrement rather than zero. Wall-clock timers and spec-declared companion scripts stop — the only
+place companion scripts are touched, per the ported asymmetry recorded in design.md. One
+`at_effects_changed()` for the whole strip.
+
+| ID | Case | Test function |
+|---|---|---|
+| CL-01 | Every record goes, across all lifecycle shapes, and the stripped keys come back | `test_cl_01_every_record_goes_and_the_keys_come_back` |
+| CL-02 | The strip is silent — no messages either person | `test_cl_02_the_strip_is_silent` |
+| CL-03 | Record-contributed condition refs decrement; bare grants survive | `test_cl_03_record_refs_decrement_and_bare_grants_survive` |
+| CL-04 | Wall-clock timers and spec-declared companion scripts are stopped | `test_cl_04_timers_and_companion_scripts_are_stopped` |
+| CL-05 | One `at_effects_changed()` for the whole strip, and no `on_remove` calls | `test_cl_05_one_hook_call_and_no_on_remove` |
 
 ## Open decisions
 

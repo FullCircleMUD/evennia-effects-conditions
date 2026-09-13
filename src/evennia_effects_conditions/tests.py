@@ -972,3 +972,187 @@ class LifecycleTests(DjangoTestCase):
         self.holder.apply_named_effect("invisible", duration=None)
         self.assertFalse(self.holder.scripts.get("effect_timer_invisible"))
         self.assertTrue(self.holder.has_effect("invisible"))
+
+
+class BreakVerbTests(DjangoTestCase):
+    """The break verbs — forced, silent removal (BK)."""
+
+    def setUp(self):
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import EffectsObjectStub
+        from tests.spec_stubs import CALLBACK_LOG
+
+        self.holder = create_object(EffectsObjectStub, key="holder")
+        CALLBACK_LOG.clear()
+
+    def test_bk_01_break_zeroes_a_multi_source_condition(self):
+        """BK-01"""
+        self.holder.apply_named_effect("invisible", duration=None)
+        self.holder.add_condition("hidden")
+        self.holder.add_condition("hidden")
+        self.assertEqual(self.holder.get_condition_count("hidden"), 3)
+        self.assertTrue(self.holder.break_effect("invisible"))
+        self.assertEqual(self.holder.get_condition_count("hidden"), 0)
+        self.assertFalse(self.holder.has_effect("invisible"))
+
+    def test_bk_02_break_is_silent_and_total(self):
+        """BK-02"""
+        self.holder.apply_named_effect("invisible", duration=None)
+        self.holder.received.clear()
+        self.holder.broadcasts.clear()
+        self.assertTrue(self.holder.break_effect("invisible"))
+        self.assertEqual(self.holder.received, [])
+        self.assertEqual(self.holder.broadcasts, [])
+        self.assertIsNone(self.holder.get_named_effect("invisible"))
+        self.assertEqual(self.holder.get_condition_count("hidden"), 0)
+
+    def test_bk_03_break_stops_the_wall_clock_timer(self):
+        """BK-03"""
+        self.holder.apply_named_effect("invisible", duration=300)
+        self.holder.break_effect("invisible")
+        self.assertFalse(self.holder.scripts.get("effect_timer_invisible"))
+
+    def test_bk_04_break_fires_the_hook_and_never_on_remove(self):
+        """BK-04"""
+        from tests.spec_stubs import CALLBACK_LOG
+
+        self.holder.apply_named_effect("trapped", duration=2, effects=[{"x": 1}])
+        hook_count = len(self.holder.hook_calls)
+        self.holder.break_effect("trapped")
+        self.assertEqual(len(self.holder.hook_calls), hook_count + 1)
+        self.holder.apply_named_effect("callbacked")
+        CALLBACK_LOG.clear()
+        self.holder.break_effect("callbacked")
+        self.assertEqual(
+            [entry for entry in CALLBACK_LOG if entry[0] == "on_remove"], []
+        )
+
+    def test_bk_05_condition_first_activity_in_both_directions(self):
+        """BK-05"""
+        # A bare condition breaks through its effect's key, record or none.
+        self.holder.add_condition("glowing")
+        self.assertTrue(self.holder.break_effect("blessed"))
+        self.assertEqual(self.holder.get_condition_count("glowing"), 0)
+        # A record whose condition was independently zeroed reports False
+        # and stays — the no-reconciliation limit, live.
+        self.holder.apply_named_effect("blessed", duration=2)
+        self.holder.break_effects(("glowing",))
+        self.assertFalse(self.holder.break_effect("blessed"))
+        self.assertTrue(self.holder.has_effect("blessed"))
+
+    def test_bk_06_inactive_is_false_and_undeclared_is_refused(self):
+        """BK-06"""
+        self.assertFalse(self.holder.break_effect("blessed"))
+        with self.assertRaises(ValueError):
+            self.holder.break_effect("no_such_effect")
+
+    def test_bk_07_break_effects_breaks_the_set_and_reports_in_order(self):
+        """BK-07"""
+        from tests.spec_stubs import GoodConditions, GoodEffects
+
+        self.holder.apply_named_effect("blessed", duration=2)
+        self.holder.add_condition("hidden")
+        broken = self.holder.break_effects(
+            (GoodEffects.BLESSED, "hidden", "stunned", GoodConditions.MUTED)
+        )
+        self.assertEqual(broken, ["blessed", "hidden"])
+        self.assertFalse(self.holder.has_effect("blessed"))
+        self.assertFalse(self.holder.has_condition("hidden"))
+        # excluded is honoured.
+        self.holder.apply_named_effect("blessed", duration=2)
+        self.holder.add_condition("hidden")
+        broken = self.holder.break_effects(
+            ("blessed", "hidden"), excluded=("hidden",)
+        )
+        self.assertEqual(broken, ["blessed"])
+        self.assertTrue(self.holder.has_condition("hidden"))
+        # A key declared in neither catalogue is a typo.
+        with self.assertRaises(ValueError):
+            self.holder.break_effects(("no_such_key",))
+
+    def test_bk_08_the_bare_condition_fallback_zeroes_silently(self):
+        """BK-08"""
+        self.holder.add_condition("hidden")
+        self.holder.add_condition("hidden")
+        self.holder.received.clear()
+        self.holder.broadcasts.clear()
+        broken = self.holder.break_effects(("hidden",))
+        self.assertEqual(broken, ["hidden"])
+        self.assertEqual(self.holder.get_condition_count("hidden"), 0)
+        self.assertEqual(self.holder.received, [])
+        self.assertEqual(self.holder.broadcasts, [])
+
+
+class ClearAllTests(DjangoTestCase):
+    """clear_all_effects() — the silent full strip (CL)."""
+
+    def setUp(self):
+        from evennia.utils.create import create_object, create_script
+
+        from evennia_effects_conditions.scripts import EffectsTimerScript
+        from tests.game_typeclasses import EffectsObjectStub
+        from tests.spec_stubs import CALLBACK_LOG
+
+        self.holder = create_object(EffectsObjectStub, key="holder")
+        CALLBACK_LOG.clear()
+        # One of every lifecycle shape, plus a bare condition grant.
+        self.holder.apply_named_effect("stunned", duration=2)
+        self.holder.apply_named_effect(
+            "blessed", duration=None, effects=[{"x": 1}]
+        )
+        self.holder.apply_named_effect("invisible", duration=300)
+        self.holder.apply_named_effect("poisoned", duration=5)
+        self.holder.apply_named_effect("callbacked")
+        self.holder.apply_named_effect("scripted")
+        create_script(
+            EffectsTimerScript, obj=self.holder, key="companion_stub",
+            autostart=False,
+        )
+        self.holder.add_condition("glowing")  # bare, beside blessed's grant
+
+    def test_cl_01_every_record_goes_and_the_keys_come_back(self):
+        """CL-01"""
+        stripped = self.holder.clear_all_effects()
+        self.assertEqual(
+            set(stripped),
+            {"stunned", "blessed", "invisible", "poisoned", "callbacked", "scripted"},
+        )
+        for key in stripped:
+            self.assertFalse(self.holder.has_effect(key))
+
+    def test_cl_02_the_strip_is_silent(self):
+        """CL-02"""
+        self.holder.received.clear()
+        self.holder.broadcasts.clear()
+        self.holder.clear_all_effects()
+        self.assertEqual(self.holder.received, [])
+        self.assertEqual(self.holder.broadcasts, [])
+
+    def test_cl_03_record_refs_decrement_and_bare_grants_survive(self):
+        """CL-03"""
+        self.assertEqual(self.holder.get_condition_count("glowing"), 2)
+        self.assertEqual(self.holder.get_condition_count("hidden"), 1)
+        self.holder.clear_all_effects()
+        self.assertEqual(self.holder.get_condition_count("glowing"), 1)
+        self.assertEqual(self.holder.get_condition_count("hidden"), 0)
+
+    def test_cl_04_timers_and_companion_scripts_are_stopped(self):
+        """CL-04"""
+        self.assertTrue(self.holder.scripts.get("effect_timer_invisible"))
+        self.assertTrue(self.holder.scripts.get("companion_stub"))
+        self.holder.clear_all_effects()
+        self.assertFalse(self.holder.scripts.get("effect_timer_invisible"))
+        self.assertFalse(self.holder.scripts.get("companion_stub"))
+
+    def test_cl_05_one_hook_call_and_no_on_remove(self):
+        """CL-05"""
+        from tests.spec_stubs import CALLBACK_LOG
+
+        hook_count = len(self.holder.hook_calls)
+        CALLBACK_LOG.clear()
+        self.holder.clear_all_effects()
+        self.assertEqual(len(self.holder.hook_calls), hook_count + 1)
+        self.assertEqual(
+            [entry for entry in CALLBACK_LOG if entry[0] == "on_remove"], []
+        )

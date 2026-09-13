@@ -484,6 +484,140 @@ class EffectsMixin(ConditionsMixin):
         if scripts:
             scripts[0].delete()
 
+    # ── the break verbs and the full strip ─────────────────────────── #
+
+    def break_effect(self, key):
+        """Force-remove a named effect. True if it was active.
+
+        The verb behind "attacking shatters your invisibility": **zeroes**
+        the condition's ref count — concealment ends, whoever granted it —
+        drops the record, stops the timer, fires ``at_effects_changed()``
+        where a payload existed, and sends nothing. The caller knows what
+        just happened and says so itself.
+
+        Activity is condition-first, as the extracted system had it: an
+        effect whose condition is active is breakable with or without a
+        record, and a record whose condition was independently zeroed
+        reports False and stays — a live consequence of the
+        no-reconciliation limit (docs/design.md § Stated limits).
+
+        ``on_remove`` does not fire — the removal callback belongs to the
+        normal removal path; break and ``clear_all_effects()`` are forced
+        strips.
+        """
+        key_str, spec = self._effect_spec(key)
+        record = (self.active_effects or {}).get(key_str)
+        condition_key = record.get("condition") if record else spec.condition
+
+        if condition_key:
+            if self.conditions.get(condition_key, 0) <= 0:
+                return False
+        elif record is None:
+            return False
+
+        if condition_key:
+            counts = dict(self.conditions)
+            counts.pop(condition_key, None)
+            self.conditions = counts
+
+        had_payload = False
+        if record is not None:
+            had_payload = bool(record.get("effects"))
+            records = dict(self.active_effects)
+            records.pop(key_str, None)
+            self.active_effects = records
+
+        self._stop_effect_timer(key_str)
+        if had_payload:
+            self.at_effects_changed()
+        return True
+
+    def break_effects(self, keys, excluded=()):
+        """Break a caller-supplied set of keys. Returns what actually broke.
+
+        The plural for "this action ends these" — which keys an action ends
+        is game policy, held in the consumer's repo and passed in here, so
+        one tuple there reaches every call site. Per key, in order: skipped
+        if excluded or inactive; broken via ``break_effect`` where the key
+        is a declared effect; a key that is only a bare condition has its
+        refs zeroed silently instead. Keys and exclusions accept members of
+        either catalogue or raw strings; a key declared in neither is
+        refused.
+
+        Silent, like ``break_effect`` — callers message and grant
+        consequences off the returned list, not off state that is now gone.
+        """
+        # Enum here is any catalogue member's common base — the set may mix
+        # condition members, effect members and raw strings.
+        from enum import Enum
+
+        def as_key(value):
+            return value.value if isinstance(value, Enum) else value
+
+        excluded_keys = {as_key(entry) for entry in excluded}
+        broken = []
+        for key in keys:
+            key_str = as_key(key)
+            if key_str in excluded_keys:
+                continue
+            try:
+                self._effect_spec(key_str)
+                is_effect = True
+            except ValueError:
+                is_effect = False
+            if is_effect and self.break_effect(key_str):
+                broken.append(key_str)
+                continue
+            try:
+                condition_key, _ = self._condition_spec(key_str)
+            except ValueError:
+                if is_effect:
+                    continue  # a declared effect that was simply inactive
+                raise ValueError(
+                    f"unknown key {key_str!r} — declared as neither an "
+                    f"effect nor a condition"
+                ) from None
+            if self.conditions.get(condition_key, 0) > 0:
+                counts = dict(self.conditions)
+                counts.pop(condition_key, None)
+                self.conditions = counts
+                broken.append(key_str)
+        return broken
+
+    def clear_all_effects(self):
+        """Strip every record silently. Returns the keys stripped.
+
+        For death-shaped moments, where a bigger announcement carries the
+        context. Record-contributed condition refs decrement — bare grants
+        (a racial sense, a stance someone took by hand) survive. Wall-clock
+        timers and spec-declared companion scripts stop; this is the only
+        place companion scripts are touched (docs/design.md § Ending things
+        early). One ``at_effects_changed()`` for the whole strip, and no
+        ``on_remove`` calls — a forced strip, like ``break_effect``.
+        """
+        records = dict(self.active_effects)
+        if not records:
+            return []
+
+        had_payload = False
+        for key, record in records.items():
+            condition_key = record.get("condition")
+            if condition_key:
+                self._remove_condition_raw(condition_key)
+            if record.get("effects"):
+                had_payload = True
+            self._stop_effect_timer(key)
+            spec = self._effect_spec(key)[1]
+            if spec.companion_script_key:
+                companions = self.scripts.get(spec.companion_script_key)
+                if companions:
+                    companions[0].delete()
+
+        self.active_effects = {}
+        if had_payload:
+            self.at_effects_changed()
+        return list(records)
+
     # ── the consumer seam ──────────────────────────────────────────── #
 
     def at_effects_changed(self):
