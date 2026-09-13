@@ -9,9 +9,11 @@ dependency**, or **no coupling** — followed either by the constraints that app
 clearance stating *why* it is clear in terms of what this library does. "No known issues" is not a
 clearance.
 
-**The library is scaffolded and implements nothing**, so every clearance below rests on that rather
-than on a design decision. They are provisional in the strongest sense: re-read every one of them as
-each surface lands.
+**The properties every clearance below rests on:** the library owns no tables, no alias and no
+router — all state is two Attributes on the holder (`conditions`, `active_effects`) plus one
+persistent timer script per running wall-clock effect; it imports nothing but Evennia and the
+logging extension; and it resolves the consumer's catalogue modules once, at boot, through two
+settings. Anything that breaks one of those properties is the trigger to re-read this file.
 
 **A recurring theme, stated once.** Most siblings here are ones a consumer would plausibly *compose*
 with this library — a spell that stuns, a mob that resists poison, a weather effect that slows. A
@@ -26,11 +28,13 @@ table at all is open. An NPC that remembers being poisoned is the consumer compo
 
 ## evennia-archive
 
-**No coupling.** Neither library imports the other. If the active effect list ends up as Attributes on
-the actor — which is what FCM's version does, and what the open decision leans toward — it travels
-with an archived copy as bytes and comes back with it, timers and all. **That is the one thing to
-re-read when the lifecycle is settled**: an effect counting down against a timer that did not survive
-the archive is a state this library would have to answer for.
+**No coupling.** Neither library imports the other. The effect state is Attributes on the actor
+(`conditions`, `active_effects`), so it travels with an archived copy as bytes and comes back with
+it. **The wall-clock timer script does not** — it is a separate script entity, not an Attribute. A
+restored wall-clock record therefore has no clock: it stays until something removes it, and
+`get_effect_remaining_seconds()` answers None. Countdown records are unaffected — their remaining
+steps are in the record itself. A consumer restoring actors decides whether to strip, re-time or
+keep such records; `clear_all_effects()` is the strip.
 
 ## evennia-calendar
 
@@ -95,10 +99,10 @@ without changing it; nothing about a condition is session state.
 
 ## evennia-scaling
 
-**No coupling.** Neither library imports the other. **One thing to re-read when the lifecycle is
-settled**: instances are independent, so a wall-clock timer running on one instance is not running on
-another. What happens to a thirty-second buff on a character that crosses mid-count is the same
-question archive's section raises, from the other side.
+**No coupling.** Neither library imports the other. Instances are independent, and a character
+crossing between them moves as archived state — so the answer is archive's answer: the records
+travel, the wall-clock timer script does not, and a wall-clock effect arrives with no clock.
+Countdown effects arrive intact, since the destination's own events step them.
 
 ## evennia-shards
 

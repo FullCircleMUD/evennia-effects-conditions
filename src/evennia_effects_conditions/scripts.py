@@ -13,14 +13,23 @@ ticking: one deferred callback per timed effect.
 # outlive a restart.
 from evennia import DefaultScript
 
+# AttributeProperty persists the two values the timer carries, set by
+# assignment per the standards.
+from evennia.typeclasses.attributes import AttributeProperty
+
 
 class EffectsTimerScript(DefaultScript):
-    """One-shot timer that removes a named effect when it fires.
+    """One-shot timer that removes a named effect when it fires."""
 
-    Attributes (set via db before start):
-        effect_key (str): key of the named effect to remove on expiry.
-        start_time (float): when the clock started, for remaining-seconds.
-    """
+    # Key of the named effect to remove on expiry. Set by the mixin before
+    # start(); no rule to validate — any declared key is legal, and the
+    # catalogue check lives at apply time, not here.
+    effect_key = AttributeProperty(default=None)
+
+    # When the clock started, for get_effect_remaining_seconds(). Written
+    # once by the mixin; deliberately unconstrained — it is a time.time()
+    # stamp, and any float is one.
+    start_time = AttributeProperty(default=None)
 
     def at_script_creation(self):
         self.desc = "Wall-clock effect timer"
@@ -32,6 +41,5 @@ class EffectsTimerScript(DefaultScript):
     def at_repeat(self):
         """The duration elapsed — remove the effect through the normal path."""
         holder = self.obj
-        effect_key = self.db.effect_key
-        if effect_key and hasattr(holder, "remove_named_effect"):
-            holder.remove_named_effect(effect_key)
+        if self.effect_key and hasattr(holder, "remove_named_effect"):
+            holder.remove_named_effect(self.effect_key)

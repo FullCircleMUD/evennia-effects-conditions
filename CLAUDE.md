@@ -132,12 +132,20 @@ evennia-effects-conditions/
 │   └── archive/                       # historical context, not authoritative
 ├── src/
 │   └── evennia_effects_conditions/    # library code (src layout)
-│       ├── __init__.py
+│       ├── __init__.py                # version + lazy public re-exports
+│       ├── specs.py                   # ConditionSpec/EffectSpec + the member-less base enums
+│       ├── config.py                  # all constants, accessors, check_settings()
+│       ├── apps.py                    # AppConfig; ready() runs the boot check
+│       ├── mixins.py                  # ConditionsMixin + EffectsMixin
+│       ├── scripts.py                 # EffectsTimerScript (the wall clock)
 │       ├── log.py                     # binds effects_conditions_log via evennia-logging-extension
 │       └── tests.py                   # unit tests, run via runtests.py
 └── tests/                             # standalone test infrastructure
     ├── __init__.py
     ├── test_settings.py
+    ├── spec_stubs.py                  # the consumer-shaped catalogue the suite's settings name
+    ├── raising_spec_module.py         # import-failure fixture (CF-06)
+    ├── game_typeclasses.py            # the mixins on recording DefaultObject stubs
     └── urls.py
 ```
 

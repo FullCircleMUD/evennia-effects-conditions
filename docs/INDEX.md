@@ -3,8 +3,7 @@
 Catalogue of every design document in this wiki. A document that is not listed here is invisible, so
 index new ones as they are written.
 
-The library is scaffolded and nothing is built, so this list is short. It grows as the design is
-agreed and decisions are recorded.
+It grows as the design is agreed and decisions are recorded.
 
 ## Process and discipline
 

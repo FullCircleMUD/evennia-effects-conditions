@@ -456,13 +456,15 @@ class EffectsMixin(ConditionsMixin):
         scripts = self.scripts.get(TIMER_SCRIPT_PREFIX + key_str)
         if not scripts:
             return None
-        start_time = scripts[0].db.start_time
+        start_time = scripts[0].start_time
         if start_time is None:
             return None
         return max(0, record["duration"] - (time.time() - start_time))
 
     def _start_effect_timer(self, key, duration_seconds):
         """Create the one-shot wall-clock timer for an applied effect."""
+        # create_script is how a persistent timer entity comes into being —
+        # the one piece of the wall clock only the engine can provide.
         from evennia.utils.create import create_script
 
         from evennia_effects_conditions.scripts import EffectsTimerScript
@@ -473,8 +475,8 @@ class EffectsMixin(ConditionsMixin):
             key=TIMER_SCRIPT_PREFIX + key,
             autostart=False,
         )
-        script.db.effect_key = key
-        script.db.start_time = time.time()
+        script.effect_key = key
+        script.start_time = time.time()
         script.interval = duration_seconds
         script.start()
 

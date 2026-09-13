@@ -944,7 +944,7 @@ class LifecycleTests(DjangoTestCase):
         self.assertEqual(len(scripts), 1)
         script = scripts[0]
         self.assertEqual(script.interval, 300)
-        self.assertEqual(script.db.effect_key, "invisible")
+        self.assertEqual(script.effect_key, "invisible")
         # Firing it is exactly what the reactor would do on expiry.
         script.at_repeat()
         self.assertFalse(self.holder.has_effect("invisible"))

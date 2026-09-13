@@ -1,11 +1,8 @@
 # Installing
 
-What a game has to do to run this library. Written as each requirement is decided rather than
-reconstructed afterwards, so it describes what exists.
-
-**The library is scaffolded and does nothing yet**, so the list below stops after the app is
-installed. The steps that declare the vocabulary, mix in the typeclasses and start whatever needs
-starting land as each is agreed in [test-plan.md](test-plan.md).
+What a game has to do to run this library. Written as each requirement was decided rather than
+reconstructed afterwards, so it describes what exists. Everything in the numbered steps is either
+enforced at boot or listed under *What is not checked for you*.
 
 ## 1. Install the logging extension
 
@@ -32,25 +29,132 @@ In your settings, **below** `from evennia.settings_default import *`:
 INSTALLED_APPS += ["evennia_effects_conditions"]
 ```
 
+## 4. Declare your catalogue
+
+One module of your own, anywhere in your gamedir you like, declaring what conditions and effects
+your game has. Subclass the library's bases; every member's value is a spec:
+
+```python
+# world/effects.py
+from evennia_effects_conditions.config import WALL_CLOCK
+from evennia_effects_conditions.specs import (
+    Condition, ConditionSpec, EffectSpec, NamedEffect,
+)
+
+
+class MyConditions(Condition):
+    HIDDEN = ConditionSpec(
+        "hidden",
+        start_first="You blend into the shadows.",
+        start_third="{name} melts into the shadows.",
+        end_first="You step out of the shadows.",
+        end_third="{name} steps out of the shadows.",
+    )
+
+
+class MyEffects(NamedEffect):
+    STUNNED = EffectSpec("stunned", lifecycle="combat_rounds")
+    INVISIBLE = EffectSpec("invisible", condition="hidden", lifecycle=WALL_CLOCK)
+```
+
+A message field left out falls back to a generated generic; an empty string is deliberately
+silent. `EffectSpec` also carries `on_apply` / `on_remove` / `escape_hook` callables,
+`companion_script_key`, and an `extras` mapping for anything game-specific your hooks read.
+
+## 5. Point the settings at it
+
+```python
+EFFECTS_CONDITION_ENUM = "world.effects.MyConditions"
+EFFECTS_EFFECT_ENUM = "world.effects.MyEffects"
+EFFECTS_LIFECYCLES = ("combat_rounds",)
+```
+
+Both enum settings are required — the game does not start without them, and boot validates the
+whole catalogue with every problem in one refusal. `EFFECTS_LIFECYCLES` declares the countdown
+lifecycles your game will step; omit it entirely if you use only the wall clock.
+
+## 6. Mix it into your typeclasses
+
+```python
+from evennia import DefaultCharacter
+from evennia_effects_conditions.mixins import EffectsMixin
+
+
+class Character(EffectsMixin, DefaultCharacter):
+    ...
+```
+
+`EffectsMixin` carries the full system, conditions included. A typeclass that only needs the
+ref-counted flags can mix in `ConditionsMixin` alone.
+
+## 7. Answer the hooks
+
+Two override points, both optional to start with:
+
+```python
+class Character(EffectsMixin, DefaultCharacter):
+
+    def at_effects_changed(self):
+        """Rebuild whatever your game means by stats, from scratch."""
+        # read self.active_effects, re-derive everything it feeds
+
+    def effects_broadcast(self, template):
+        """Filter third-person effect messages, if your game has concealment."""
+        # the template arrives with {name} unformatted
+```
+
+The default `at_effects_changed()` does nothing — right for a game whose effects are conditions
+and messages only. The default broadcast sends to the holder's room, unfiltered.
+
+## 8. Drive your lifecycles
+
+Wherever your game's own event happens, step the lifecycle named for it:
+
+```python
+ended = character.advance_effects("combat_rounds")   # each combat round
+character.clear_effects("combat_rounds")             # when combat ends
+```
+
+The wall clock needs no driving — applying with it and a duration sets its own one-shot timer.
+
 ## Required settings
 
-None yet. The library reads no settings, because it does nothing yet.
+| Setting | What it does | Without it |
+|---|---|---|
+| `EFFECTS_CONDITION_ENUM` | Dotted path to your `Condition` subclass | Boot is refused |
+| `EFFECTS_EFFECT_ENUM` | Dotted path to your `NamedEffect` subclass | Boot is refused |
 
 ## Optional settings
 
-None yet.
+| Setting | What it does | Default |
+|---|---|---|
+| `EFFECTS_LIFECYCLES` | The countdown lifecycle names your game steps | `()` — wall clock only |
 
 ## What is not checked for you
 
 - **That the library is in `INSTALLED_APPS`.** Leave it out and `AppConfig.ready()` never runs, so
-  nothing validates anything. There is nothing to validate today, so nothing is lost — but the same
-  omission will silently skip every check added from here.
+  nothing validates anything — the mixins then fail at first use instead of at boot.
 - **That a library import in your settings file sits below `from evennia.settings_default import *`.**
-  `LOG_DIR` is set by that import, and a library imported above it is refused at boot. Where your game
-  overrides `LOG_DIR`, the override goes directly under that import.
+  `LOG_DIR` is set by that import, and a library imported above it is refused at boot.
+- **The dual-namespace key convention.** `break_effects()` falls back from the effect route to the
+  bare-condition route by *key coincidence* — a condition managed by a named effect only breaks as
+  one thing if both carry the same key (FCM's `slowed` shape). Nothing can check that you meant
+  the names to line up.
+- **That your `at_effects_changed()` re-derives fully.** The hook's contract is rebuild-from-
+  scratch on every call. An override that increments instead will drift, and nothing reports it.
+- **The `.db` bypass.** The library's stores are `AttributeProperty`s set by assignment. Writing
+  them through `.db`/`attributes.add()` skips whatever the descriptor does; you get exactly what
+  you set.
+- **Condition ref leaks.** Conditions are an incremental counter with no rebuild path — see
+  [design.md](design.md) § Stated limits. A crashed script that never released its grant leaves
+  the flag set.
 
 ## Watching it
 
-`effects-conditions.log`, beside `server.log` in your `LOG_DIR`. Nothing writes to it yet, so the file
-does not appear. What the library should log is decided alongside the first surface that has anything
-worth reporting.
+`effects-conditions.log`, beside `server.log` in your `LOG_DIR`. Today the library logs one kind
+of line: the boot refusal, at ERROR, carrying the same text as the raised exception.
+
+## That is all of it
+
+Declare the catalogue, point two settings at it, mix in, answer the hooks you need, and step your
+lifecycles where your events happen.

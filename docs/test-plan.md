@@ -34,7 +34,7 @@ Behaviour is agreed here first, before any test or code — see
 |---|---|
 | `tests/spec_stubs.py` | The consumer-shaped enums the suite's settings point at. Imports nothing but `evennia_effects_conditions.specs`, because `ready()` resolves it during `django.setup()`. Grows variant stubs as cases need them |
 | `tests/raising_spec_module.py` | A consumer module that raises on import — the negative fixture for `CF-06`, kept in its own file so importing the good stubs never trips it |
-| `tests/game_typeclasses.py` | The mixins on plain `DefaultObject`s — deliberately not a character, pinning that the library asks nothing of its holder's class. `ConditionsObjectStub` records its own `msg()` and `effects_broadcast()` calls so message cases read what arrived. Imported inside test bodies, never named in settings |
+| `tests/game_typeclasses.py` | The mixins on plain `DefaultObject`s — deliberately not a character, pinning that the library asks nothing of its holder's class. The stubs record their own `msg()`, `effects_broadcast()` and `at_effects_changed()` calls so cases read what arrived; `RaisingHookStub` is the EF-08 unwind fixture. Imported inside test bodies, never named in settings |
 
 The SP cases use no fixtures — they declare consumer-shaped enums inline, pure stdlib.
 

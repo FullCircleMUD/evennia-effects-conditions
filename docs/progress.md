@@ -2,6 +2,30 @@
 
 Running log of milestones with links to evidence. Reverse chronological — newest first.
 
+## 2026-09-13 — the core built, surface by surface
+
+88 tests, all passing. 79 new cases across seven surfaces, `SP-01` to `CL-05`, each surface agreed
+in the plan, written red, then implemented — see the per-unit commits.
+
+- **SP** — the declaration surface: frozen specs as enum member values, string-key lookup, wrong
+  spec class and duplicate keys refused at the `class` statement.
+- **CF** — `config.py` + `apps.py`: the three settings, every problem in one logged, cause-chained
+  refusal; the refusal read back from the log file, never mocked.
+- **CN** — the ref-counted conditions mixin with transition-only messaging and the
+  `effects_broadcast` seam. Undeclared keys refused (recorded divergence from FCM).
+- **EF** — the effects core: anti-stacking, spec auto-fill, merge semantics for messages/extras,
+  and the unwind-on-raise guarantee around `at_effects_changed()`.
+- **LC** — consumer-named countdowns stepped by `advance_effects()`, `clear_effects()` for
+  combat-end shapes, and the wall-clock timer script.
+- **BK/CL** — the break verbs (silent, zeroing, condition-first, policy set caller-supplied) and
+  the silent full strip that spares bare condition grants.
+- Docs brought up to the built state: installing.md carries the full consumer story;
+  interoperability's archive/scaling sections now answer the settled lifecycle question (records
+  travel as Attributes, timer scripts do not).
+
+**Not yet done:** live-boot validation in `examples/demo` — waits on the shared environment being
+free.
+
 ## 2026-09-13 — architecture agreed
 
 The design conversation happened against FCM's working system, seam by seam, and the result is

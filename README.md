@@ -5,8 +5,8 @@ there, and the clock that takes them away again.
 
 ## Status
 
-**Scaffolded, nothing built.** The repo structure, the test runner and the documentation surfaces
-exist; the library's behaviour is still being agreed in
+**Core built, not yet proven in a live game.** The catalogue declaration, the boot check, both
+mixins, the lifecycle machinery and the break/clear verbs exist, covered by the cases in
 [docs/test-plan.md](https://github.com/FullCircleMUD/evennia-effects-conditions/blob/main/docs/test-plan.md).
 See [docs/progress.md](https://github.com/FullCircleMUD/evennia-effects-conditions/blob/main/docs/progress.md).
 
@@ -30,19 +30,33 @@ What that costs shows up later, not at the time:
 The mechanism underneath all of it is the same regardless of game: something is true of an actor for
 a while, more than one thing can make it true, and it has to come off cleanly.
 
+## The shape
+
+The library holds the machinery — ref-counted condition flags, tracked anti-stacking effect
+records, countdown lifecycles you step from your own events, one library-driven wall clock, break
+and clear verbs. Your game declares the catalogue (two enums of frozen specs, named in settings and
+validated at boot) and answers two hooks: `at_effects_changed()` rebuilds whatever you mean by
+stats, and `effects_broadcast()` filters third-person messages if your game has concealment. The
+library never learns what a stat, a round or invisibility is.
+
+```python
+class MyEffects(NamedEffect):
+    STUNNED = EffectSpec("stunned", lifecycle="combat_rounds")
+
+target.apply_named_effect("stunned", duration=2)
+target.advance_effects("combat_rounds")   # wherever a round happens in your game
+```
+
 ## Is this for you?
 
 Probably, if your game has buffs, debuffs or status flags and you would rather configure the
-lifecycle than rewrite it per effect.
-
-Too early to say otherwise — the library does nothing yet, so there is no surface to judge it
-against.
+lifecycle than rewrite it per effect. Not for you if you want the library to ship effects — it
+deliberately ships none.
 
 ## Install
 
 **What a game declares is in
 [docs/installing.md](https://github.com/FullCircleMUD/evennia-effects-conditions/blob/main/docs/installing.md).**
-It is short, because the library does nothing yet.
 
 Nothing is published yet. Editable install for development against a checkout:
 
