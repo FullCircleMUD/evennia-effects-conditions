@@ -1,0 +1,23 @@
+# Dependencies for the demo gamedirs in this folder.
+#
+# Install from *this* directory, so the relative paths below resolve:
+#
+#     cd examples
+#     source venv/bin/activate
+#     pip install -r requirements.txt
+#
+# The library is installed editable (-e), so edits to ../src/evennia_effects_conditions
+# take effect in the demo games on their next restart — no reinstall.
+
+evennia
+
+# macOS only. Apple's /usr/lib/libsqlite3.dylib runs sqlite3_initialize()
+# through libdispatch, which cannot survive the fork twistd uses to daemonise —
+# so `evennia start` hangs silently on the child's first SQLite call, with no
+# error to go on. sqlean.py ships a statically-linked SQLite, so Apple's library
+# is never loaded. The marker means pip skips it everywhere else.
+sqlean.py; sys_platform == 'darwin'
+
+# Not on PyPI — the sibling checkout provides it.
+-e ../../evennia-logging-extension
+-e ..
