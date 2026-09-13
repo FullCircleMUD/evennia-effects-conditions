@@ -33,6 +33,10 @@ class GoodConditions(Condition):
     )
     # Bare minimum — every message falls back to the generated default.
     DAZZLED = ConditionSpec("dazzled")
+    # Every message an empty string — deliberately silent (CN-07).
+    MUTED = ConditionSpec(
+        "muted", start_first="", start_third="", end_first="", end_third="",
+    )
 
 
 class GoodEffects(NamedEffect):

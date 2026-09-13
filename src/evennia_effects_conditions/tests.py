@@ -11,6 +11,7 @@ from unittest import TestCase
 
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase, override_settings
+from django.test import TestCase as DjangoTestCase
 
 import evennia_effects_conditions
 from evennia_effects_conditions.config import (
@@ -387,3 +388,162 @@ class BootCheckTests(SimpleTestCase):
 
             delattr(settings, SETTING_LIFECYCLES)
             self.assertEqual(get_lifecycles(), ())
+
+
+class ConditionsMixinTests(DjangoTestCase):
+    """The conditions mixin — ref counting, messaging, the seam (CN)."""
+
+    def setUp(self):
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import ConditionsObjectStub
+
+        self.holder = create_object(ConditionsObjectStub, key="holder")
+
+    def _conditions(self):
+        from tests.spec_stubs import GoodConditions
+
+        return GoodConditions
+
+    # ── the counter ────────────────────────────────────────────────── #
+
+    def test_cn_01_first_add_reports_the_transition_and_counts_one(self):
+        """CN-01"""
+        conds = self._conditions()
+        self.assertTrue(self.holder.add_condition(conds.HIDDEN))
+        self.assertTrue(self.holder.has_condition("hidden"))
+        self.assertEqual(self.holder.get_condition_count(conds.HIDDEN), 1)
+        # Member and raw string are the same condition.
+        self.assertTrue(self.holder.has_condition(conds.HIDDEN))
+        self.assertTrue(self.holder.remove_condition("hidden"))
+        self.assertTrue(self.holder.add_condition("hidden"))
+        self.assertEqual(self.holder.get_condition_count("hidden"), 1)
+
+    def test_cn_02_a_second_add_increments_silently(self):
+        """CN-02"""
+        self.holder.add_condition("hidden")
+        self.assertFalse(self.holder.add_condition("hidden"))
+        self.assertEqual(self.holder.get_condition_count("hidden"), 2)
+        self.assertTrue(self.holder.has_condition("hidden"))
+
+    def test_cn_03_only_the_last_remove_reports_and_absent_removes_are_false(self):
+        """CN-03"""
+        self.holder.add_condition("hidden")
+        self.holder.add_condition("hidden")
+        self.assertFalse(self.holder.remove_condition("hidden"))
+        self.assertEqual(self.holder.get_condition_count("hidden"), 1)
+        self.assertTrue(self.holder.remove_condition("hidden"))
+        self.assertFalse(self.holder.remove_condition("hidden"))
+        self.assertEqual(self.holder.get_condition_count("hidden"), 0)
+
+    def test_cn_04_an_unheld_condition_reads_back_inactive(self):
+        """CN-04"""
+        self.assertFalse(self.holder.has_condition("hidden"))
+        self.assertEqual(self.holder.get_condition_count("hidden"), 0)
+
+    # ── transition messaging ───────────────────────────────────────── #
+
+    def _recording_holder(self):
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import RecordingBroadcastStub
+
+        return create_object(RecordingBroadcastStub, key="recorder")
+
+    def test_cn_05_the_first_add_delivers_start_messages_the_second_nothing(self):
+        """CN-05"""
+        holder = self._recording_holder()
+        holder.add_condition("hidden")
+        self.assertIn("You blend into the shadows.", holder.received)
+        self.assertEqual(len(holder.broadcasts), 1)
+        self.assertIn("melts into the shadows", holder.broadcasts[0])
+        holder.add_condition("hidden")
+        self.assertEqual(len(holder.received), 1)
+        self.assertEqual(len(holder.broadcasts), 1)
+
+    def test_cn_06_the_last_remove_delivers_end_messages_earlier_ones_nothing(self):
+        """CN-06"""
+        holder = self._recording_holder()
+        holder.add_condition("hidden")
+        holder.add_condition("hidden")
+        holder.received.clear()
+        holder.broadcasts.clear()
+        holder.remove_condition("hidden")
+        self.assertEqual(holder.received, [])
+        self.assertEqual(holder.broadcasts, [])
+        holder.remove_condition("hidden")
+        self.assertIn("You step out of the shadows.", holder.received)
+        self.assertEqual(len(holder.broadcasts), 1)
+        self.assertIn("steps out of the shadows", holder.broadcasts[0])
+
+    def test_cn_07_missing_messages_fall_back_and_empty_strings_are_silent(self):
+        """CN-07"""
+        holder = self._recording_holder()
+        # DAZZLED declares no messages — the generated fallback names the key.
+        holder.add_condition("dazzled")
+        self.assertEqual(len(holder.received), 1)
+        self.assertIn("dazzled", holder.received[0])
+        self.assertEqual(len(holder.broadcasts), 1)
+        self.assertIn("dazzled", holder.broadcasts[0])
+        # MUTED declares every message as "" — deliberately silent.
+        holder.received.clear()
+        holder.broadcasts.clear()
+        holder.add_condition("muted")
+        holder.remove_condition("muted")
+        self.assertEqual(holder.received, [])
+        self.assertEqual(holder.broadcasts, [])
+
+    # ── the broadcast seam ─────────────────────────────────────────── #
+
+    def test_cn_08_the_default_broadcast_reaches_the_room_not_the_holder(self):
+        """CN-08"""
+        from evennia.utils.create import create_object
+
+        # No location: the default seam no-ops rather than raising.
+        self.holder.add_condition("hidden")
+        self.holder.remove_condition("hidden")
+
+        from evennia.objects.objects import DefaultRoom
+
+        from tests.game_typeclasses import ConditionsObjectStub
+
+        room = create_object(DefaultRoom, key="room")
+        observer = create_object(ConditionsObjectStub, key="observer", location=room)
+        self.holder.location = room
+        self.holder.received.clear()
+        self.holder.add_condition("hidden")
+        third = [text for text in observer.received if text and "shadows" in text]
+        self.assertEqual(len(third), 1)
+        # {name} was formatted with the holder's key for the naive default.
+        self.assertIn("holder", third[0])
+        # The holder got only the first-person line.
+        self.assertEqual(
+            [text for text in self.holder.received if "melts" in (text or "")], []
+        )
+
+    def test_cn_09_a_broadcast_override_receives_the_template_unformatted(self):
+        """CN-09"""
+        holder = self._recording_holder()
+        holder.add_condition("hidden")
+        self.assertIn("{name}", holder.broadcasts[0])
+
+    # ── refusal and persistence ────────────────────────────────────── #
+
+    def test_cn_10_an_undeclared_key_is_refused_add_and_remove_alike(self):
+        """CN-10"""
+        with self.assertRaises(ValueError):
+            self.holder.add_condition("no_such_condition")
+        with self.assertRaises(ValueError):
+            self.holder.remove_condition("no_such_condition")
+
+    def test_cn_11_the_store_is_a_persisted_attribute_on_the_holder(self):
+        """CN-11"""
+        self.holder.add_condition("hidden")
+        self.assertEqual(self.holder.attributes.get("conditions"), {"hidden": 1})
+        pk = self.holder.pk
+        self.holder.flush_from_cache()
+
+        from evennia.objects.models import ObjectDB
+
+        fresh = ObjectDB.objects.get(id=pk)
+        self.assertEqual(dict(fresh.conditions), {"hidden": 1})

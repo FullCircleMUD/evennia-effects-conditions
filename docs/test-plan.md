@@ -22,6 +22,7 @@ Behaviour is agreed here first, before any test or code — see
 | `SC` | The scaffold — the package installs and the runner runs |
 | `SP` | The spec dataclasses and the two base enums a consumer subclasses |
 | `CF` | The settings and the boot check |
+| `CN` | The conditions mixin — ref counting, transition messaging, the broadcast seam |
 
 ## Fixtures
 
@@ -29,6 +30,7 @@ Behaviour is agreed here first, before any test or code — see
 |---|---|
 | `tests/spec_stubs.py` | The consumer-shaped enums the suite's settings point at. Imports nothing but `evennia_effects_conditions.specs`, because `ready()` resolves it during `django.setup()`. Grows variant stubs as cases need them |
 | `tests/raising_spec_module.py` | A consumer module that raises on import — the negative fixture for `CF-06`, kept in its own file so importing the good stubs never trips it |
+| `tests/game_typeclasses.py` | The mixins on plain `DefaultObject`s — deliberately not a character, pinning that the library asks nothing of its holder's class. `ConditionsObjectStub` records its own `msg()` and `effects_broadcast()` calls so message cases read what arrived. Imported inside test bodies, never named in settings |
 
 The SP cases use no fixtures — they declare consumer-shaped enums inline, pure stdlib.
 
@@ -116,6 +118,40 @@ case — see [design.md](design.md) § The catalogue.
 | CF-20 | An effect on the wall-clock lifecycle passes without declaring anything | `test_cf_20_the_wall_clock_lifecycle_needs_no_declaration` |
 | CF-21 | The refusal is logged to disk at ERROR carrying the same text as the exception — read back from the file, never mocked | `test_cf_21_the_refusal_is_logged_at_error_with_the_same_text` |
 | CF-22 | The accessors return the resolved classes and the declared lifecycles; lifecycles default to `()` | `test_cf_22_the_accessors_return_the_resolved_values` |
+
+## CN — the conditions mixin
+
+The ref-counted flag store from [design.md](design.md) § The shape. Multiple sources can make the
+same thing true of an actor; the flag clears only when the last one lets go. `add_condition()`
+reports the 0→1 transition, `remove_condition()` the →0 transition, and messages are delivered
+only on those transitions — an increment or decrement in between is silent. Both accept a member
+or a raw key string.
+
+Messaging follows [design.md](design.md) § Messages: the spec's text, first person delivered by
+the library (`holder.msg`), third person through the one `effects_broadcast(template)` seam. The
+default broadcast formats `{name}` with the holder's key and sends to the holder's location
+excluding the holder; an override receives the template unformatted so a game can render the name
+per observer.
+
+**Divergence from the extracted system, for sign-off with these cases:** FCM's mixin ref-counts
+any string it is handed. Here a key the catalogue does not declare is refused with `ValueError` —
+the catalogue is declared and boot-validated, so an unknown key at runtime is a typo, and
+ref-counting it silently would hide the typo in a flag nothing can ever read back by its right
+name.
+
+| ID | Case | Test function |
+|---|---|---|
+| CN-01 | Adding on 0→1 returns True; the flag reads back active with count 1; member and raw string are interchangeable | `test_cn_01_first_add_reports_the_transition_and_counts_one` |
+| CN-02 | A second add returns False and increments to 2 — still active, no re-announcement | `test_cn_02_a_second_add_increments_silently` |
+| CN-03 | Remove decrements; only the →0 remove returns True; removing an absent condition returns False and the count stays 0 | `test_cn_03_only_the_last_remove_reports_and_absent_removes_are_false` |
+| CN-04 | An unheld condition reads back inactive with count 0 | `test_cn_04_an_unheld_condition_reads_back_inactive` |
+| CN-05 | The 0→1 add delivers the spec's start messages — first person to the holder, third person through the broadcast seam; a 1→2 add delivers nothing | `test_cn_05_the_first_add_delivers_start_messages_the_second_nothing` |
+| CN-06 | The →0 remove delivers the end messages; a 2→1 remove delivers nothing | `test_cn_06_the_last_remove_delivers_end_messages_earlier_ones_nothing` |
+| CN-07 | A missing message field falls back to the generated default; an empty string is deliberately silent | `test_cn_07_missing_messages_fall_back_and_empty_strings_are_silent` |
+| CN-08 | The default broadcast sends the formatted text to the holder's location excluding the holder, and no-ops without a location | `test_cn_08_the_default_broadcast_reaches_the_room_not_the_holder` |
+| CN-09 | An `effects_broadcast` override receives the template unformatted, `{name}` intact | `test_cn_09_a_broadcast_override_receives_the_template_unformatted` |
+| CN-10 | A key the catalogue does not declare is refused with `ValueError`, add and remove alike | `test_cn_10_an_undeclared_key_is_refused_add_and_remove_alike` |
+| CN-11 | The store is an Evennia Attribute on the holder, written by assignment — it survives a fresh load of the object | `test_cn_11_the_store_is_a_persisted_attribute_on_the_holder` |
 
 ## Open decisions
 
