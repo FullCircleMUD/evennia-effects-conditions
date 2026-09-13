@@ -23,8 +23,20 @@ in the plan, written red, then implemented — see the per-unit commits.
   interoperability's archive/scaling sections now answer the settled lifecycle question (records
   travel as Attributes, timer scripts do not).
 
-**Not yet done:** live-boot validation in `examples/demo` — waits on the shared environment being
-free.
+**Validated live** in `examples/demo`, wired as a real consumer (own catalogue in
+`world/effects.py`, the three settings, `EffectsMixin` on Character):
+
+- A 6-second wall-clock blessing arrived with its start message, reported ~4.5s remaining when
+  queried mid-count, expired **on its own timer** with the end message, and dropped its condition.
+- A 2-round stun survived one `advance_effects("combat_rounds")` and expired on the second,
+  returning `["stunned"]`.
+- `EFFECTS_CONDITION_ENUM` pointed at a class that does not exist refused the boot naming the
+  setting and the path, with the same text at ERROR in `server/logs/effects-conditions.log`;
+  restored, the game booted again.
+
+One Evennia launcher gotcha found on the way (not a library issue): a fresh database with no TTY
+sends `check_database()` into infinite recursion at superuser creation — the workaround is in
+`examples/README.md`.
 
 ## 2026-09-13 — architecture agreed
 

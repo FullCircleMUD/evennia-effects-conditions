@@ -83,14 +83,19 @@ SERVERNAME = "demo"
 ######################################################################
 # evennia-effects-conditions
 #
-# Nothing to configure. The library declares no settings and does nothing at
-# boot — it is scaffolded and has no behaviour yet. The app is installed so
-# that the first check added to it runs here without a settings edit.
+# The catalogue is this game's own, declared in world/effects.py; the two
+# enum settings are required and validated at boot — every problem in one
+# refusal. One countdown lifecycle is declared so both clock shapes can be
+# watched; the wall clock needs no declaration.
 #
 # See ../../../../docs/installing.md.
 ######################################################################
 
 INSTALLED_APPS += ["evennia_effects_conditions"]
+
+EFFECTS_CONDITION_ENUM = "world.effects.DemoConditions"
+EFFECTS_EFFECT_ENUM = "world.effects.DemoEffects"
+EFFECTS_LIFECYCLES = ("combat_rounds",)
 
 
 ######################################################################

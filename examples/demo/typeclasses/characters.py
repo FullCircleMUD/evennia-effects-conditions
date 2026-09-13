@@ -10,10 +10,15 @@ creation commands.
 
 from evennia.objects.objects import DefaultCharacter
 
+# The one line the library asks of a typeclass. EffectsMixin carries the
+# full system, conditions included; the hooks' defaults are enough for a
+# demo with no stats and no concealment.
+from evennia_effects_conditions.mixins import EffectsMixin
+
 from .objects import ObjectParent
 
 
-class Character(ObjectParent, DefaultCharacter):
+class Character(EffectsMixin, ObjectParent, DefaultCharacter):
     """
     The Character just re-implements some of the Object's methods and hooks
     to represent a Character entity in-game.
