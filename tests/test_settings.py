@@ -30,6 +30,13 @@ INSTALLED_APPS = list(INSTALLED_APPS) + [  # noqa: F405
     "evennia_effects_conditions",
 ]
 
+# The library's settings, declared as a configured instance would declare
+# them. A case wanting one absent or broken overrides it (override_settings,
+# or delattr inside an override block for true absence).
+EFFECTS_CONDITION_ENUM = "tests.spec_stubs.GoodConditions"
+EFFECTS_EFFECT_ENUM = "tests.spec_stubs.GoodEffects"
+EFFECTS_LIFECYCLES = ("combat_rounds", "fair_dances")
+
 # One database. The library owns no tables, so there is nothing to route and
 # nothing to separate.
 DATABASES = {
