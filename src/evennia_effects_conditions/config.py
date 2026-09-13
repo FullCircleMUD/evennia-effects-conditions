@@ -42,6 +42,10 @@ DEFAULT_LIFECYCLES = ()
 #: it may not appear in EFFECTS_LIFECYCLES, and advance_effects() refuses it.
 WALL_CLOCK = "wall_clock"
 
+#: What a wall-clock effect's timer script is keyed as, ahead of the effect
+#: key: applying "invisible" creates "effect_timer_invisible" on the holder.
+TIMER_SCRIPT_PREFIX = "effect_timer_"
+
 #: What each collected problem is prefixed with in the refusal message. One
 #: problem per line, so a consumer with three things wrong works through a
 #: list rather than a paragraph. Named so a test can count problems without

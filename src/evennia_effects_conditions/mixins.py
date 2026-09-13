@@ -10,7 +10,9 @@ records and their lifecycle — see ``docs/design.md``.
 # reading as plain properties; the library sets them by assignment throughout.
 from evennia.typeclasses.attributes import AttributeProperty
 
-from evennia_effects_conditions.config import UNSET
+import time
+
+from evennia_effects_conditions.config import TIMER_SCRIPT_PREFIX, UNSET, WALL_CLOCK
 
 
 class ConditionsMixin:
@@ -280,6 +282,11 @@ class EffectsMixin(ConditionsMixin):
             fallback_third=f"{{name}} is now affected by {key_str}.",
         )
 
+        # The wall clock is the one lifecycle the library drives itself.
+        # No duration, no timer — permanent until removed.
+        if lifecycle == WALL_CLOCK and duration:
+            self._start_effect_timer(key_str, duration)
+
         if spec.on_apply:
             spec.on_apply(self, source, duration)
         return True
@@ -312,6 +319,9 @@ class EffectsMixin(ConditionsMixin):
             fallback_third=f"{{name}} is no longer affected by {key_str}.",
         )
 
+        if record.get("lifecycle") == WALL_CLOCK:
+            self._stop_effect_timer(key_str)
+
         if record.get("effects"):
             self.at_effects_changed()
 
@@ -342,6 +352,137 @@ class EffectsMixin(ConditionsMixin):
             if key_str in (self.active_effects or {}):
                 return key_str
         return None
+
+    # ── lifecycles ─────────────────────────────────────────────────── #
+
+    def _check_countdown_lifecycle(self, lifecycle):
+        """Refuse the wall clock and undeclared names.
+
+        The wall clock already has a driver — two clocks may not move one
+        record — and an undeclared name is a typo by the same argument as
+        an undeclared condition key: stepping it would silently step
+        nothing, forever.
+        """
+        from evennia_effects_conditions.config import get_lifecycles
+
+        if lifecycle == WALL_CLOCK:
+            raise ValueError(
+                f"{WALL_CLOCK!r} is the library-driven wall clock — it "
+                f"cannot be advanced or cleared as a countdown"
+            )
+        if lifecycle not in get_lifecycles():
+            raise ValueError(
+                f"unknown lifecycle {lifecycle!r} — not declared in "
+                f"EFFECTS_LIFECYCLES"
+            )
+
+    def advance_effects(self, lifecycle):
+        """Step every record on one countdown lifecycle.
+
+        The consumer calls this where its own event happens — a combat
+        round, a dance, whatever the name means. Per record on the
+        lifecycle: the spec's escape hook may end it at its full remaining
+        duration; otherwise the duration decrements, and zero expires it
+        through the normal removal path. ``duration=None`` records are
+        never touched — they last until ``clear_effects()``.
+
+        Returns:
+            list — the keys that ended on this step, escape and expiry
+            alike, in record order.
+        """
+        self._check_countdown_lifecycle(lifecycle)
+        ended = []
+        decrements = {}
+        for key, record in dict(self.active_effects).items():
+            if record.get("lifecycle") != lifecycle:
+                continue
+            if record.get("duration") is None:
+                continue
+            spec = self._effect_spec(key)[1]
+            if spec.escape_hook and spec.escape_hook(self, record):
+                ended.append(key)
+                continue
+            remaining = record["duration"] - 1
+            if remaining <= 0:
+                ended.append(key)
+            else:
+                decrements[key] = remaining
+        if decrements:
+            records = dict(self.active_effects)
+            for key, remaining in decrements.items():
+                # Copy the record rather than mutating the stored dict.
+                updated = dict(records[key])
+                updated["duration"] = remaining
+                records[key] = updated
+            self.active_effects = records
+        for key in ended:
+            self.remove_named_effect(key)
+        return ended
+
+    def clear_effects(self, lifecycle):
+        """Remove every record on one countdown lifecycle, with messages.
+
+        How "the thing this lifecycle belongs to ended" generalises —
+        combat over, the fair packed up. Catches the ``duration=None``
+        records that ``advance_effects()`` never touches.
+
+        Returns:
+            list — the keys removed, in record order.
+        """
+        self._check_countdown_lifecycle(lifecycle)
+        cleared = [
+            key
+            for key, record in dict(self.active_effects).items()
+            if record.get("lifecycle") == lifecycle
+        ]
+        for key in cleared:
+            self.remove_named_effect(key)
+        return cleared
+
+    def get_effect_remaining_seconds(self, key):
+        """Seconds left on a wall-clock effect, or None.
+
+        None for absent effects and for every other lifecycle — a
+        countdown's remaining steps are in the record's ``duration``.
+        """
+        key_str, _ = self._effect_spec(key)
+        record = (self.active_effects or {}).get(key_str)
+        if (
+            not record
+            or record.get("lifecycle") != WALL_CLOCK
+            or record.get("duration") is None
+        ):
+            return None
+        scripts = self.scripts.get(TIMER_SCRIPT_PREFIX + key_str)
+        if not scripts:
+            return None
+        start_time = scripts[0].db.start_time
+        if start_time is None:
+            return None
+        return max(0, record["duration"] - (time.time() - start_time))
+
+    def _start_effect_timer(self, key, duration_seconds):
+        """Create the one-shot wall-clock timer for an applied effect."""
+        from evennia.utils.create import create_script
+
+        from evennia_effects_conditions.scripts import EffectsTimerScript
+
+        script = create_script(
+            EffectsTimerScript,
+            obj=self,
+            key=TIMER_SCRIPT_PREFIX + key,
+            autostart=False,
+        )
+        script.db.effect_key = key
+        script.db.start_time = time.time()
+        script.interval = duration_seconds
+        script.start()
+
+    def _stop_effect_timer(self, key):
+        """Delete the timer script for an effect, if one is running."""
+        scripts = self.scripts.get(TIMER_SCRIPT_PREFIX + key)
+        if scripts:
+            scripts[0].delete()
 
     # ── the consumer seam ──────────────────────────────────────────── #
 

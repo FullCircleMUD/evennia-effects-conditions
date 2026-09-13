@@ -815,3 +815,160 @@ class EffectsMixinCoreTests(DjangoTestCase):
 
         fresh = ObjectDB.objects.get(id=pk)
         self.assertIn("trapped", fresh.active_effects)
+
+
+class LifecycleTests(DjangoTestCase):
+    """Lifecycles — advancing, clearing, the wall-clock timer (LC)."""
+
+    def setUp(self):
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import EffectsObjectStub
+        from tests.spec_stubs import CALLBACK_LOG, ESCAPE_RETURN
+
+        self.holder = create_object(EffectsObjectStub, key="holder")
+        CALLBACK_LOG.clear()
+        ESCAPE_RETURN["value"] = False
+
+    # ── advancing ──────────────────────────────────────────────────── #
+
+    def test_lc_01_advance_touches_only_its_own_lifecycle(self):
+        """LC-01"""
+        self.holder.apply_named_effect("stunned", duration=3)
+        self.holder.apply_named_effect("danced", duration=3)
+        self.holder.apply_named_effect("invisible", duration=300)
+        self.holder.apply_named_effect("poisoned", duration=5)
+        self.holder.advance_effects("combat_rounds")
+        self.assertEqual(self.holder.get_named_effect("stunned")["duration"], 2)
+        self.assertEqual(self.holder.get_named_effect("danced")["duration"], 3)
+        self.assertEqual(self.holder.get_named_effect("invisible")["duration"], 300)
+        self.assertEqual(self.holder.get_named_effect("poisoned")["duration"], 5)
+
+    def test_lc_02_expiry_is_a_normal_removal(self):
+        """LC-02"""
+        self.holder.apply_named_effect("blessed", duration=1)
+        self.holder.received.clear()
+        ended = self.holder.advance_effects("combat_rounds")
+        self.assertEqual(ended, ["blessed"])
+        self.assertFalse(self.holder.has_effect("blessed"))
+        self.assertIn("The blessing fades.", self.holder.received)
+        self.assertEqual(self.holder.get_condition_count("glowing"), 0)
+
+    def test_lc_03_the_return_names_exactly_what_ended(self):
+        """LC-03"""
+        self.holder.apply_named_effect("stunned", duration=2)
+        self.holder.apply_named_effect("blessed", duration=1)
+        ended = self.holder.advance_effects("combat_rounds")
+        self.assertEqual(ended, ["blessed"])
+        self.assertTrue(self.holder.has_effect("stunned"))
+
+    def test_lc_04_a_permanent_record_survives_every_advance(self):
+        """LC-04"""
+        self.holder.apply_named_effect("blessed", duration=None)
+        self.holder.advance_effects("combat_rounds")
+        self.holder.advance_effects("combat_rounds")
+        self.assertTrue(self.holder.has_effect("blessed"))
+        self.assertIsNone(self.holder.get_named_effect("blessed")["duration"])
+
+    # ── the escape hook ────────────────────────────────────────────── #
+
+    def test_lc_05_a_true_escape_ends_the_effect_without_a_decrement(self):
+        """LC-05"""
+        from tests.spec_stubs import CALLBACK_LOG, ESCAPE_RETURN
+
+        ESCAPE_RETURN["value"] = True
+        self.holder.apply_named_effect("escapable", duration=4)
+        ended = self.holder.advance_effects("combat_rounds")
+        self.assertEqual(ended, ["escapable"])
+        self.assertFalse(self.holder.has_effect("escapable"))
+        removals = [entry for entry in CALLBACK_LOG if entry[0] == "on_remove"]
+        self.assertEqual(len(removals), 1)
+        # Ended at its full remaining duration — no decrement first.
+        self.assertEqual(removals[0][2]["duration"], 4)
+
+    def test_lc_06_a_false_escape_leaves_the_normal_decrement(self):
+        """LC-06"""
+        from tests.spec_stubs import CALLBACK_LOG
+
+        self.holder.apply_named_effect("escapable", duration=3)
+        self.holder.advance_effects("combat_rounds")
+        self.assertEqual(self.holder.get_named_effect("escapable")["duration"], 2)
+        escapes = [entry for entry in CALLBACK_LOG if entry[0] == "escape"]
+        self.assertEqual(len(escapes), 1)
+        self.assertEqual(escapes[0][1], self.holder)
+        self.assertEqual(escapes[0][2]["duration"], 3)
+        self.holder.advance_effects("combat_rounds")
+        escapes = [entry for entry in CALLBACK_LOG if entry[0] == "escape"]
+        self.assertEqual(len(escapes), 2)
+
+    def test_lc_07_the_escape_hook_is_not_called_for_permanent_records(self):
+        """LC-07"""
+        from tests.spec_stubs import CALLBACK_LOG, ESCAPE_RETURN
+
+        ESCAPE_RETURN["value"] = True
+        self.holder.apply_named_effect("escapable", duration=None)
+        self.holder.advance_effects("combat_rounds")
+        self.assertTrue(self.holder.has_effect("escapable"))
+        self.assertEqual(
+            [entry for entry in CALLBACK_LOG if entry[0] == "escape"], []
+        )
+
+    # ── refusals and clearing ──────────────────────────────────────── #
+
+    def test_lc_08_advance_refuses_the_wall_clock_and_undeclared_names(self):
+        """LC-08"""
+        with self.assertRaises(ValueError):
+            self.holder.advance_effects(WALL_CLOCK)
+        with self.assertRaises(ValueError):
+            self.holder.advance_effects("no_such_lifecycle")
+
+    def test_lc_09_clear_removes_everything_on_one_lifecycle(self):
+        """LC-09"""
+        self.holder.apply_named_effect("stunned", duration=2)
+        self.holder.apply_named_effect("blessed", duration=None)
+        self.holder.apply_named_effect("danced", duration=1)
+        self.holder.received.clear()
+        cleared = self.holder.clear_effects("combat_rounds")
+        self.assertEqual(set(cleared), {"stunned", "blessed"})
+        self.assertFalse(self.holder.has_effect("stunned"))
+        self.assertFalse(self.holder.has_effect("blessed"))
+        self.assertTrue(self.holder.has_effect("danced"))
+        self.assertIn("The blessing fades.", self.holder.received)
+
+    # ── the wall clock ─────────────────────────────────────────────── #
+
+    def test_lc_10_a_wall_clock_apply_creates_the_one_shot_timer(self):
+        """LC-10"""
+        self.holder.apply_named_effect("invisible", duration=300)
+        scripts = self.holder.scripts.get("effect_timer_invisible")
+        self.assertEqual(len(scripts), 1)
+        script = scripts[0]
+        self.assertEqual(script.interval, 300)
+        self.assertEqual(script.db.effect_key, "invisible")
+        # Firing it is exactly what the reactor would do on expiry.
+        script.at_repeat()
+        self.assertFalse(self.holder.has_effect("invisible"))
+        self.assertFalse(self.holder.has_condition("hidden"))
+
+    def test_lc_11_removal_stops_and_deletes_the_timer(self):
+        """LC-11"""
+        self.holder.apply_named_effect("invisible", duration=300)
+        self.holder.remove_named_effect("invisible")
+        self.assertFalse(self.holder.scripts.get("effect_timer_invisible"))
+
+    def test_lc_12_remaining_seconds_counts_down_for_the_wall_clock_only(self):
+        """LC-12"""
+        self.holder.apply_named_effect("invisible", duration=300)
+        remaining = self.holder.get_effect_remaining_seconds("invisible")
+        self.assertIsNotNone(remaining)
+        self.assertGreater(remaining, 299)
+        self.assertLessEqual(remaining, 300)
+        self.holder.apply_named_effect("stunned", duration=3)
+        self.assertIsNone(self.holder.get_effect_remaining_seconds("stunned"))
+        self.assertIsNone(self.holder.get_effect_remaining_seconds("blessed"))
+
+    def test_lc_13_a_wall_clock_apply_with_no_duration_starts_no_timer(self):
+        """LC-13"""
+        self.holder.apply_named_effect("invisible", duration=None)
+        self.assertFalse(self.holder.scripts.get("effect_timer_invisible"))
+        self.assertTrue(self.holder.has_effect("invisible"))

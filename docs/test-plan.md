@@ -24,6 +24,7 @@ Behaviour is agreed here first, before any test or code — see
 | `CF` | The settings and the boot check |
 | `CN` | The conditions mixin — ref counting, transition messaging, the broadcast seam |
 | `EF` | The effects mixin core — apply, remove, query, the recalculate hook |
+| `LC` | Lifecycles — advancing countdowns, clearing them, the wall-clock timer |
 
 ## Fixtures
 
@@ -200,6 +201,44 @@ effect's removal.
 | EF-17 | Two effects coexist independently — removing one leaves the other's record and condition intact | `test_ef_17_two_effects_coexist_and_one_removal_leaves_the_other` |
 | EF-18 | `duration` and `lifecycle` are stored as given; `duration=None` is a valid permanent record | `test_ef_18_duration_and_lifecycle_are_stored_as_given` |
 | EF-19 | `active_effects` is a persisted Attribute on the holder — it survives a fresh load | `test_ef_19_the_record_store_is_a_persisted_attribute` |
+
+## LC — lifecycles
+
+The clocks from [design.md](design.md) § Two clocks and a blank. Countdowns are stepped from
+outside: the consumer calls `advance_effects(name)` where its own event happens, and the library
+decrements every record on that name, expiring what reaches zero — an expiry is a normal removal,
+end messages and all. `clear_effects(name)` removes everything on a name at once, which is how
+"combat ended" generalises; it also catches the `duration=None` records that `advance_effects()`
+deliberately never touches. Both return the keys that ended, so the caller can act on what
+happened.
+
+The wall clock is the one lifecycle the library drives: applying with it and a duration creates a
+one-shot persistent script on the holder that removes the effect when it fires. No ticking — one
+deferred callback. The suite never waits on real time: it asserts the script's shape and invokes
+its firing hook directly, which is exactly what the reactor would do.
+
+The escape hook runs at each countdown step, before the decrement — True ends the effect there and
+then, at its full remaining duration. It runs only for numeric durations; whether a permanent
+record should be escapable is the standing open decision below.
+
+`advance_effects()` refuses the wall-clock name — two clocks may not drive one record — and
+refuses an undeclared name, which is a typo by the same argument as CN-10.
+
+| ID | Case | Test function |
+|---|---|---|
+| LC-01 | Advancing one lifecycle decrements only its own records — other countdowns, wall-clock and unmanaged records untouched | `test_lc_01_advance_touches_only_its_own_lifecycle` |
+| LC-02 | A record reaching zero is removed as a normal removal — end messages, condition ref decremented | `test_lc_02_expiry_is_a_normal_removal` |
+| LC-03 | `advance_effects()` returns exactly the keys that ended this step; survivors are not in it | `test_lc_03_the_return_names_exactly_what_ended` |
+| LC-04 | A `duration=None` record on a countdown lifecycle survives every advance untouched | `test_lc_04_a_permanent_record_survives_every_advance` |
+| LC-05 | An escape hook returning True ends the effect that step, without a decrement — the record ends at its full remaining duration | `test_lc_05_a_true_escape_ends_the_effect_without_a_decrement` |
+| LC-06 | An escape hook returning False leaves the normal decrement; the hook is called once per advance with `(target, record)` | `test_lc_06_a_false_escape_leaves_the_normal_decrement` |
+| LC-07 | The escape hook is not called for `duration=None` records | `test_lc_07_the_escape_hook_is_not_called_for_permanent_records` |
+| LC-08 | `advance_effects()` refuses the wall-clock name and undeclared names with `ValueError` | `test_lc_08_advance_refuses_the_wall_clock_and_undeclared_names` |
+| LC-09 | `clear_effects(name)` removes everything on that name — `duration=None` included — with messages, returning the removed keys; other lifecycles untouched | `test_lc_09_clear_removes_everything_on_one_lifecycle` |
+| LC-10 | A wall-clock apply creates a one-shot timer script on the holder — named for the effect, interval = duration — and its firing removes the effect | `test_lc_10_a_wall_clock_apply_creates_the_one_shot_timer` |
+| LC-11 | Removing a wall-clock effect stops and deletes its timer script | `test_lc_11_removal_stops_and_deletes_the_timer` |
+| LC-12 | `get_effect_remaining_seconds()` counts down from the duration for a wall-clock record, and is None for other lifecycles and absent effects | `test_lc_12_remaining_seconds_counts_down_for_the_wall_clock_only` |
+| LC-13 | A wall-clock apply with `duration=None` starts no timer — permanent until removed | `test_lc_13_a_wall_clock_apply_with_no_duration_starts_no_timer` |
 
 ## Open decisions
 

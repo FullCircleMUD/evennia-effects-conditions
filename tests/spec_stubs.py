@@ -54,6 +54,15 @@ def _recording_on_remove(target, record):
     CALLBACK_LOG.append(("on_remove", target, record))
 
 
+#: What the recording escape hook answers — tests flip "value" per case.
+ESCAPE_RETURN = {"value": False}
+
+
+def _recording_escape(target, record):
+    CALLBACK_LOG.append(("escape", target, dict(record)))
+    return ESCAPE_RETURN["value"]
+
+
 class GoodEffects(NamedEffect):
     """A small valid effect catalogue, one member per lifecycle shape."""
 
@@ -91,6 +100,15 @@ class GoodEffects(NamedEffect):
     # Countdown with spec-level extras (EF-11).
     TRAPPED = EffectSpec(
         "trapped", lifecycle="combat_rounds", extras={"save_dc": 12},
+    )
+    # The second countdown lifecycle (LC-01).
+    DANCED = EffectSpec("danced", lifecycle="fair_dances")
+    # Escape-hooked countdown; on_remove records what ended (LC-05 to LC-07).
+    ESCAPABLE = EffectSpec(
+        "escapable",
+        lifecycle="combat_rounds",
+        escape_hook=_recording_escape,
+        on_remove=_recording_on_remove,
     )
 
 
