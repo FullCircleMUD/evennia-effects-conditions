@@ -298,10 +298,10 @@ place companion scripts are touched, per the ported asymmetry recorded in design
 Deliberately without cases. A case is a commitment, so nothing becomes one until it has been
 decided.
 
-- **[TBD — needs discussion: does the escape hook fire for `duration=None` records?]** The
-  extracted system only ran its save inside the numeric-duration branch, so a permanent hold was
-  never escapable. A per-step-escapable permanent effect is a plausible want; the port keeps the
-  extracted behaviour until decided.
+- **Decided 2026-09-13: the escape hook fires for numeric durations only** (the behaviour LC-07
+  pins). `duration=None` is for things that genuinely persist — a stance, a permanent ward — and
+  an escapable hold is properly a countdown with an escape hook, not a permanent. A "held until
+  you save" effect is declared with a large duration, which behaves identically in play.
 - **[TBD — needs discussion: does a `contrib/` ever exist?]** Candidates would be display commands
   (`effects`, `conditions`) and a reference `effects_broadcast` override. Nothing is scaffolded
   until something is decided.
