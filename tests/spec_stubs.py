@@ -37,6 +37,21 @@ class GoodConditions(Condition):
     MUTED = ConditionSpec(
         "muted", start_first="", start_third="", end_first="", end_third="",
     )
+    # Bare condition granted by GoodEffects.BLESSED (EF cases).
+    GLOWING = ConditionSpec("glowing")
+
+
+#: What the recording callbacks append to — ("hook name", *args) tuples.
+#: Tests clear it in setUp.
+CALLBACK_LOG = []
+
+
+def _recording_on_apply(target, source, duration):
+    CALLBACK_LOG.append(("on_apply", target, source, duration))
+
+
+def _recording_on_remove(target, record):
+    CALLBACK_LOG.append(("on_remove", target, record))
 
 
 class GoodEffects(NamedEffect):
@@ -57,6 +72,26 @@ class GoodEffects(NamedEffect):
     )
     # Unmanaged — something external ends it.
     POISONED = EffectSpec("poisoned")
+    # Countdown, condition-granting, fully messaged (EF cases).
+    BLESSED = EffectSpec(
+        "blessed",
+        condition="glowing",
+        lifecycle="combat_rounds",
+        start_first="You are blessed!",
+        start_third="{name} glows.",
+        end_first="The blessing fades.",
+        end_third="{name} stops glowing.",
+    )
+    # Carries both callbacks and nothing else (EF-12, EF-13).
+    CALLBACKED = EffectSpec(
+        "callbacked",
+        on_apply=_recording_on_apply,
+        on_remove=_recording_on_remove,
+    )
+    # Countdown with spec-level extras (EF-11).
+    TRAPPED = EffectSpec(
+        "trapped", lifecycle="combat_rounds", extras={"save_dc": 12},
+    )
 
 
 class EmptyConditions(Condition):

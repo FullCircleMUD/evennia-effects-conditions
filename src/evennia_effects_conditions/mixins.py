@@ -10,6 +10,8 @@ records and their lifecycle — see ``docs/design.md``.
 # reading as plain properties; the library sets them by assignment throughout.
 from evennia.typeclasses.attributes import AttributeProperty
 
+from evennia_effects_conditions.config import UNSET
+
 
 class ConditionsMixin:
     """Ref-counted condition flags on a holder.
@@ -161,3 +163,194 @@ class ConditionsMixin:
         if not location:
             return
         location.msg_contents(template.format(name=self.key), exclude=[self])
+
+
+class EffectsMixin(ConditionsMixin):
+    """Named-effect records on a holder — see ``docs/design.md``.
+
+    Tracked, anti-stacking effects that compose a condition flag, an opaque
+    ``effects`` payload, messages, and a lifecycle. The library owns when
+    things apply, stack and reverse; the consumer's ``at_effects_changed()``
+    override owns what the payloads mean.
+    """
+
+    # Named effect records: {"blessed": {...}} — see docs/design.md § The record.
+    active_effects = AttributeProperty(default={})
+
+    #: The spec fields that carry message text, in record-key order.
+    _MESSAGE_KEYS = ("start_first", "start_third", "end_first", "end_third")
+
+    # ── resolution ─────────────────────────────────────────────────── #
+
+    def _effect_spec(self, key):
+        """Resolve member-or-string to ``(key, spec)``, refusing unknowns."""
+        from evennia_effects_conditions.config import get_effect_enum
+
+        enum_cls = get_effect_enum()
+        if isinstance(key, enum_cls):
+            return key.value, key.spec
+        try:
+            member = enum_cls(key)
+        except ValueError:
+            raise ValueError(
+                f"unknown named effect {key!r} — not declared by "
+                f"{enum_cls.__module__}.{enum_cls.__qualname__}"
+            ) from None
+        return member.value, member.spec
+
+    # ── apply and remove ───────────────────────────────────────────── #
+
+    def apply_named_effect(self, key, source=None, effects=None,
+                           condition=UNSET, duration=None, lifecycle=UNSET,
+                           messages=None, extras=None):
+        """Apply a named effect. True if applied, False if already active.
+
+        ``condition`` and ``lifecycle`` default to the ``UNSET`` sentinel:
+        an omitted argument means "whatever the spec says", an explicit
+        ``None`` suppresses the spec's value, and an explicit value
+        overrides it.
+
+        Sequencing: the record and condition ref persist first, then
+        ``at_effects_changed()`` runs — unwound completely if it raises —
+        then messages, the lifecycle start, and ``on_apply`` last.
+
+        Args:
+            key: catalogue member or key string.
+            source: whatever caused this; handed to ``on_apply``, not stored.
+            effects: opaque payload list, stored verbatim, never interpreted.
+            duration: int, or None for no expiry of its own.
+            messages: per-application overrides, merged over the spec's.
+            extras: per-application values, merged over the spec's.
+        """
+        key_str, spec = self._effect_spec(key)
+        if key_str in (self.active_effects or {}):
+            return False
+
+        # Auto-fill from the spec where the caller did not decide.
+        if condition is UNSET:
+            condition_key = spec.condition
+        elif condition is None:
+            condition_key = None
+        else:
+            condition_key, _ = self._condition_spec(condition)
+        if lifecycle is UNSET:
+            lifecycle = spec.lifecycle
+
+        resolved_messages = {
+            field: getattr(spec, field) for field in self._MESSAGE_KEYS
+        }
+        if messages:
+            resolved_messages.update(messages)
+
+        record = {
+            "condition": condition_key,
+            "effects": list(effects) if effects else [],
+            "duration": duration,
+            "lifecycle": lifecycle,
+            "messages": resolved_messages,
+            "extras": {**dict(spec.extras), **(dict(extras) if extras else {})},
+        }
+
+        # Persist first — the hook rebuilds from active_effects, so it has
+        # to be able to see the record it is reacting to.
+        records = dict(self.active_effects)
+        records[key_str] = record
+        self.active_effects = records
+        if condition_key:
+            self._add_condition_raw(condition_key)
+
+        if record["effects"]:
+            try:
+                self.at_effects_changed()
+            except Exception:
+                # The consumer's hook is their bug and propagates untouched;
+                # the library's job is only to not be left half-applied.
+                records = dict(self.active_effects)
+                records.pop(key_str, None)
+                self.active_effects = records
+                if condition_key:
+                    self._remove_condition_raw(condition_key)
+                raise
+
+        self._deliver_transition_messages(
+            key_str,
+            first=resolved_messages["start_first"],
+            third=resolved_messages["start_third"],
+            fallback_first=f"You are now affected by {key_str}.",
+            fallback_third=f"{{name}} is now affected by {key_str}.",
+        )
+
+        if spec.on_apply:
+            spec.on_apply(self, source, duration)
+        return True
+
+    def remove_named_effect(self, key):
+        """Remove a named effect, reversing everything it set up.
+
+        True if removed, False if it was not active. Drops the record,
+        decrements the condition ref, delivers the record's end messages,
+        fires ``at_effects_changed()`` where a payload existed, and hands
+        ``on_remove`` the removed record last.
+        """
+        key_str, spec = self._effect_spec(key)
+        records = dict(self.active_effects)
+        record = records.pop(key_str, None)
+        if record is None:
+            return False
+        self.active_effects = records
+
+        condition_key = record.get("condition")
+        if condition_key:
+            self._remove_condition_raw(condition_key)
+
+        messages = record.get("messages", {})
+        self._deliver_transition_messages(
+            key_str,
+            first=messages.get("end_first"),
+            third=messages.get("end_third"),
+            fallback_first=f"You are no longer affected by {key_str}.",
+            fallback_third=f"{{name}} is no longer affected by {key_str}.",
+        )
+
+        if record.get("effects"):
+            self.at_effects_changed()
+
+        if spec.on_remove:
+            spec.on_remove(self, dict(record))
+        return True
+
+    # ── queries ────────────────────────────────────────────────────── #
+
+    def has_effect(self, key):
+        """Return True if the named effect is active."""
+        key_str, _ = self._effect_spec(key)
+        return key_str in (self.active_effects or {})
+
+    def get_named_effect(self, key):
+        """Return the record for a named effect, or None if not active."""
+        key_str, _ = self._effect_spec(key)
+        return (self.active_effects or {}).get(key_str)
+
+    def first_active_effect(self, keys):
+        """Return the first active key in iteration order, or None.
+
+        The generic form of "is this actor incapacitated / movement-blocked
+        / …" — the consumer keeps its policy sets and asks with them.
+        """
+        for key in keys:
+            key_str, _ = self._effect_spec(key)
+            if key_str in (self.active_effects or {}):
+                return key_str
+        return None
+
+    # ── the consumer seam ──────────────────────────────────────────── #
+
+    def at_effects_changed(self):
+        """React to a change in the effect records. No-op by default.
+
+        THE consumer override point for stats — see ``docs/design.md``
+        § Stats. Called after any change to any record's ``effects``
+        payload, with the changed store already readable. An override
+        rebuilds whatever it means by stats from ``active_effects`` — a
+        full re-derive on every call, never an increment.
+        """

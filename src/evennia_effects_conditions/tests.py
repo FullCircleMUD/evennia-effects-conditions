@@ -547,3 +547,271 @@ class ConditionsMixinTests(DjangoTestCase):
 
         fresh = ObjectDB.objects.get(id=pk)
         self.assertEqual(dict(fresh.conditions), {"hidden": 1})
+
+
+class EffectsMixinCoreTests(DjangoTestCase):
+    """The effects mixin core — apply, remove, query, the hook (EF)."""
+
+    def setUp(self):
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import EffectsObjectStub
+        from tests.spec_stubs import CALLBACK_LOG
+
+        self.holder = create_object(EffectsObjectStub, key="holder")
+        CALLBACK_LOG.clear()
+
+    def _effects(self):
+        from tests.spec_stubs import GoodEffects
+
+        return GoodEffects
+
+    def _raising_holder(self):
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import RaisingHookStub
+
+        return create_object(RaisingHookStub, key="raiser")
+
+    # ── apply and the record ───────────────────────────────────────── #
+
+    def test_ef_01_apply_records_the_effect_with_the_documented_fields(self):
+        """EF-01"""
+        effects = self._effects()
+        self.assertTrue(self.holder.apply_named_effect(effects.BLESSED, duration=3))
+        self.assertTrue(self.holder.has_effect("blessed"))
+        self.assertTrue(self.holder.has_effect(effects.BLESSED))
+        record = self.holder.get_named_effect("blessed")
+        self.assertEqual(record["condition"], "glowing")
+        self.assertEqual(record["effects"], [])
+        self.assertEqual(record["duration"], 3)
+        self.assertEqual(record["lifecycle"], "combat_rounds")
+        self.assertEqual(record["extras"], {})
+        self.assertEqual(record["messages"]["start_first"], "You are blessed!")
+        # Raw string works everywhere the member does.
+        self.holder.remove_named_effect("blessed")
+        self.assertTrue(self.holder.apply_named_effect("blessed", duration=1))
+
+    def test_ef_02_a_second_apply_anti_stacks_and_leaves_the_record_alone(self):
+        """EF-02"""
+        self.holder.apply_named_effect("blessed", duration=3)
+        self.assertFalse(
+            self.holder.apply_named_effect(
+                "blessed", duration=99, effects=[{"x": 1}]
+            )
+        )
+        record = self.holder.get_named_effect("blessed")
+        self.assertEqual(record["duration"], 3)
+        self.assertEqual(record["effects"], [])
+
+    def test_ef_03_an_undeclared_effect_key_is_refused(self):
+        """EF-03"""
+        with self.assertRaises(ValueError):
+            self.holder.apply_named_effect("no_such_effect")
+
+    def test_ef_04_spec_auto_fill_explicit_none_and_explicit_override(self):
+        """EF-04"""
+        # Omitted → from the spec.
+        self.holder.apply_named_effect("blessed", duration=1)
+        self.assertTrue(self.holder.has_condition("glowing"))
+        self.holder.remove_named_effect("blessed")
+        # Explicit None → suppressed.
+        self.holder.apply_named_effect("blessed", duration=1, condition=None)
+        self.assertIsNone(self.holder.get_named_effect("blessed")["condition"])
+        self.assertFalse(self.holder.has_condition("glowing"))
+        self.holder.remove_named_effect("blessed")
+        # Explicit value → overrides the spec.
+        self.holder.apply_named_effect("blessed", duration=1, condition="hidden")
+        self.assertTrue(self.holder.has_condition("hidden"))
+        self.assertFalse(self.holder.has_condition("glowing"))
+
+    def test_ef_05_an_effect_granted_condition_moves_silently(self):
+        """EF-05"""
+        self.holder.apply_named_effect("blessed", duration=1)
+        self.assertEqual(self.holder.get_condition_count("glowing"), 1)
+        for line in self.holder.received:
+            self.assertNotIn("affected by glowing", line or "")
+
+    def test_ef_06_the_payload_is_stored_verbatim(self):
+        """EF-06"""
+        payload = [{"weird": ["shape", 1]}, {"type": "custom", "n": 2.5}]
+        self.holder.apply_named_effect("trapped", duration=2, effects=payload)
+        self.assertEqual(
+            list(self.holder.get_named_effect("trapped")["effects"]), payload
+        )
+
+    # ── the hook ───────────────────────────────────────────────────── #
+
+    def test_ef_07_the_hook_fires_only_with_a_payload_and_after_the_store_changed(self):
+        """EF-07"""
+        self.holder.apply_named_effect("trapped", duration=2, effects=[{"x": 1}])
+        self.assertEqual(len(self.holder.hook_calls), 1)
+        self.assertIn("trapped", self.holder.hook_calls[0])
+        # No payload — nothing the consumer's rebuild could see changed.
+        self.holder.apply_named_effect("blessed", duration=1)
+        self.assertEqual(len(self.holder.hook_calls), 1)
+        # Removal mirrors: payload fires, no payload does not.
+        self.holder.remove_named_effect("trapped")
+        self.assertEqual(len(self.holder.hook_calls), 2)
+        self.assertNotIn("trapped", self.holder.hook_calls[1])
+        self.holder.remove_named_effect("blessed")
+        self.assertEqual(len(self.holder.hook_calls), 2)
+
+    def test_ef_08_a_raising_hook_unwinds_the_apply_and_propagates(self):
+        """EF-08"""
+        from tests.spec_stubs import CALLBACK_LOG
+
+        holder = self._raising_holder()
+        with self.assertRaises(RuntimeError):
+            holder.apply_named_effect(
+                "callbacked", effects=[{"x": 1}], condition="glowing",
+            )
+        self.assertFalse(holder.has_effect("callbacked"))
+        self.assertIsNone(holder.get_named_effect("callbacked"))
+        self.assertEqual(holder.get_condition_count("glowing"), 0)
+        self.assertEqual(holder.received, [])
+        self.assertEqual(holder.broadcasts, [])
+        self.assertEqual(CALLBACK_LOG, [])
+
+    # ── messages and extras ────────────────────────────────────────── #
+
+    def test_ef_09_apply_delivers_start_messages_and_anti_stacking_is_silent(self):
+        """EF-09"""
+        self.holder.apply_named_effect("blessed", duration=1)
+        self.assertIn("You are blessed!", self.holder.received)
+        self.assertIn("{name} glows.", self.holder.broadcasts)
+        self.holder.received.clear()
+        self.holder.broadcasts.clear()
+        self.holder.apply_named_effect("blessed", duration=1)
+        self.assertEqual(self.holder.received, [])
+        self.assertEqual(self.holder.broadcasts, [])
+
+    def test_ef_10_message_overrides_merge_and_survive_to_removal(self):
+        """EF-10"""
+        self.holder.apply_named_effect(
+            "blessed", duration=1, messages={"start_first": "CUSTOM start"}
+        )
+        self.assertIn("CUSTOM start", self.holder.received)
+        self.assertNotIn("You are blessed!", self.holder.received)
+        self.assertIn("{name} glows.", self.holder.broadcasts)
+        self.holder.received.clear()
+        self.holder.remove_named_effect("blessed")
+        self.assertIn("The blessing fades.", self.holder.received)
+        # An empty-string override silences that key alone.
+        self.holder.received.clear()
+        self.holder.broadcasts.clear()
+        self.holder.apply_named_effect(
+            "blessed", duration=1, messages={"start_third": ""}
+        )
+        self.assertIn("You are blessed!", self.holder.received)
+        self.assertEqual(self.holder.broadcasts, [])
+
+    def test_ef_11_record_extras_merge_spec_and_per_application(self):
+        """EF-11"""
+        self.holder.apply_named_effect(
+            "trapped", duration=2, extras={"save_dc": 20, "note": "x"}
+        )
+        self.assertEqual(
+            self.holder.get_named_effect("trapped")["extras"],
+            {"save_dc": 20, "note": "x"},
+        )
+        self.holder.remove_named_effect("trapped")
+        self.holder.apply_named_effect("trapped", duration=2)
+        self.assertEqual(
+            self.holder.get_named_effect("trapped")["extras"], {"save_dc": 12}
+        )
+
+    # ── the callbacks ──────────────────────────────────────────────── #
+
+    def test_ef_12_on_apply_fires_last_with_the_source_which_is_not_stored(self):
+        """EF-12"""
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import EffectsObjectStub
+        from tests.spec_stubs import CALLBACK_LOG
+
+        source = create_object(EffectsObjectStub, key="source")
+        self.holder.apply_named_effect("callbacked", source=source, duration=4)
+        self.assertEqual(CALLBACK_LOG, [("on_apply", self.holder, source, 4)])
+        self.assertNotIn("source", self.holder.get_named_effect("callbacked"))
+
+    def test_ef_13_removal_reverses_everything_and_hands_on_remove_the_record(self):
+        """EF-13"""
+        from tests.spec_stubs import CALLBACK_LOG
+
+        self.holder.apply_named_effect("blessed", duration=2)
+        self.holder.add_condition("glowing")  # a second, bare grant
+        self.holder.received.clear()
+        self.assertTrue(self.holder.remove_named_effect("blessed"))
+        self.assertFalse(self.holder.has_effect("blessed"))
+        self.assertIn("The blessing fades.", self.holder.received)
+        # Decremented, not zeroed — the bare grant survives.
+        self.assertEqual(self.holder.get_condition_count("glowing"), 1)
+
+        self.holder.apply_named_effect("callbacked", duration=7)
+        CALLBACK_LOG.clear()
+        self.holder.remove_named_effect("callbacked")
+        self.assertEqual(len(CALLBACK_LOG), 1)
+        name, target, record = CALLBACK_LOG[0]
+        self.assertEqual(name, "on_remove")
+        self.assertEqual(target, self.holder)
+        self.assertEqual(record["duration"], 7)
+
+    def test_ef_14_removing_an_absent_effect_is_false_and_silent(self):
+        """EF-14"""
+        self.assertFalse(self.holder.remove_named_effect("blessed"))
+        self.assertEqual(self.holder.received, [])
+        self.assertEqual(self.holder.hook_calls, [])
+
+    # ── queries, coexistence, persistence ──────────────────────────── #
+
+    def test_ef_15_first_active_effect_returns_the_first_active_in_order(self):
+        """EF-15"""
+        effects = self._effects()
+        self.holder.apply_named_effect("blessed", duration=1)
+        self.holder.apply_named_effect("trapped", duration=1)
+        self.assertEqual(
+            self.holder.first_active_effect(["stunned", "trapped", "blessed"]),
+            "trapped",
+        )
+        self.assertEqual(
+            self.holder.first_active_effect([effects.STUNNED, effects.BLESSED]),
+            "blessed",
+        )
+        self.assertIsNone(self.holder.first_active_effect(["stunned"]))
+
+    def test_ef_16_an_undeclared_explicit_condition_is_refused(self):
+        """EF-16"""
+        with self.assertRaises(ValueError):
+            self.holder.apply_named_effect(
+                "blessed", duration=1, condition="no_such_condition"
+            )
+        self.assertFalse(self.holder.has_effect("blessed"))
+
+    def test_ef_17_two_effects_coexist_and_one_removal_leaves_the_other(self):
+        """EF-17"""
+        self.holder.apply_named_effect("blessed", duration=1)
+        self.holder.apply_named_effect("trapped", duration=2, effects=[{"x": 1}])
+        self.holder.remove_named_effect("trapped")
+        self.assertTrue(self.holder.has_effect("blessed"))
+        self.assertTrue(self.holder.has_condition("glowing"))
+
+    def test_ef_18_duration_and_lifecycle_are_stored_as_given(self):
+        """EF-18"""
+        self.holder.apply_named_effect("trapped", duration=4)
+        self.assertEqual(self.holder.get_named_effect("trapped")["duration"], 4)
+        self.holder.apply_named_effect("blessed", duration=None)
+        record = self.holder.get_named_effect("blessed")
+        self.assertIsNone(record["duration"])
+        self.assertEqual(record["lifecycle"], "combat_rounds")
+
+    def test_ef_19_the_record_store_is_a_persisted_attribute(self):
+        """EF-19"""
+        self.holder.apply_named_effect("trapped", duration=2)
+        pk = self.holder.pk
+        self.holder.flush_from_cache()
+
+        from evennia.objects.models import ObjectDB
+
+        fresh = ObjectDB.objects.get(id=pk)
+        self.assertIn("trapped", fresh.active_effects)

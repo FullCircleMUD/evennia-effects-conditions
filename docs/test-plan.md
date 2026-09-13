@@ -23,6 +23,7 @@ Behaviour is agreed here first, before any test or code — see
 | `SP` | The spec dataclasses and the two base enums a consumer subclasses |
 | `CF` | The settings and the boot check |
 | `CN` | The conditions mixin — ref counting, transition messaging, the broadcast seam |
+| `EF` | The effects mixin core — apply, remove, query, the recalculate hook |
 
 ## Fixtures
 
@@ -152,6 +153,53 @@ name.
 | CN-09 | An `effects_broadcast` override receives the template unformatted, `{name}` intact | `test_cn_09_a_broadcast_override_receives_the_template_unformatted` |
 | CN-10 | A key the catalogue does not declare is refused with `ValueError`, add and remove alike | `test_cn_10_an_undeclared_key_is_refused_add_and_remove_alike` |
 | CN-11 | The store is an Evennia Attribute on the holder, written by assignment — it survives a fresh load of the object | `test_cn_11_the_store_is_a_persisted_attribute_on_the_holder` |
+
+## EF — the effects mixin core
+
+The named-effect records from [design.md](design.md): apply with anti-stacking, symmetric removal,
+the queries, and the `at_effects_changed()` seam with its unwind guarantee. Lifecycle stepping is
+`LC`; the break and clear verbs are `BK`/`CL`.
+
+Apply sequences as: persist the record and the condition ref → `at_effects_changed()` (unwound on
+a raise) → messages → lifecycle start → `on_apply`. Removal reverses: drop the record → decrement
+the ref → end messages from the record → `at_effects_changed()` → `on_remove` last, handed the
+removed record. The hook fires only when the record carries an `effects` payload — a pure
+condition-flag effect changes nothing the consumer's rebuild could see.
+
+An effect-granted condition moves **silently** — the record's own messages speak, not the
+condition's. The ref still counts, so a condition held by an effect and a bare grant survives the
+effect's removal.
+
+**Two divergences from the extracted system, for sign-off with these cases:**
+
+- **Per-application `messages=` merges over the spec's messages** instead of replacing the whole
+  set. FCM's replacement semantics forced its SHIELD to re-supply all four strings to override one;
+  merge lets a caller override the key it means and keep the rest. An empty string still silences a
+  key. Record message keys are named like the spec fields (`start_first` … `end_third`).
+- **An explicit `condition=` argument is validated against the catalogue** (`ValueError` on an
+  undeclared key), matching CN-10 — the source accepted any string.
+
+| ID | Case | Test function |
+|---|---|---|
+| EF-01 | Apply records the effect — active, record readable with the documented fields, member and raw string interchangeable | `test_ef_01_apply_records_the_effect_with_the_documented_fields` |
+| EF-02 | A second apply anti-stacks: returns False and the standing record is untouched by the second call's arguments | `test_ef_02_a_second_apply_anti_stacks_and_leaves_the_record_alone` |
+| EF-03 | An effect key the catalogue does not declare is refused with `ValueError` | `test_ef_03_an_undeclared_effect_key_is_refused` |
+| EF-04 | Omitted `condition`/`lifecycle` auto-fill from the spec; explicit `None` suppresses the spec's value; an explicit value overrides it | `test_ef_04_spec_auto_fill_explicit_none_and_explicit_override` |
+| EF-05 | An effect-granted condition is added silently — ref +1, active, none of the condition's own messages | `test_ef_05_an_effect_granted_condition_moves_silently` |
+| EF-06 | The `effects` payload is stored verbatim and never interpreted — arbitrary consumer shapes survive round-trip | `test_ef_06_the_payload_is_stored_verbatim` |
+| EF-07 | `at_effects_changed()` fires on apply and removal only when a payload exists, and at a moment the changed store is already readable | `test_ef_07_the_hook_fires_only_with_a_payload_and_after_the_store_changed` |
+| EF-08 | A raising `at_effects_changed()` unwinds the apply — record gone, condition ref gone, no messages, no `on_apply` — and the exception propagates untouched | `test_ef_08_a_raising_hook_unwinds_the_apply_and_propagates` |
+| EF-09 | Apply delivers the spec's start messages after the hook succeeds; an anti-stacked apply delivers nothing | `test_ef_09_apply_delivers_start_messages_and_anti_stacking_is_silent` |
+| EF-10 | Per-application `messages=` merges over the spec's — the named key changes, the others keep the spec's text, and the merged set is what removal later delivers | `test_ef_10_message_overrides_merge_and_survive_to_removal` |
+| EF-11 | Record extras = the spec's `extras` merged with per-application `extras`, the per-application value winning per key | `test_ef_11_record_extras_merge_spec_and_per_application` |
+| EF-12 | `on_apply(target, source, duration)` fires last, with the passed source; the source is not stored on the record | `test_ef_12_on_apply_fires_last_with_the_source_which_is_not_stored` |
+| EF-13 | Removal reverses everything — record gone, ref decremented, end messages from the record, `on_remove(target, record)` last with the removed record | `test_ef_13_removal_reverses_everything_and_hands_on_remove_the_record` |
+| EF-14 | Removing an absent effect returns False and delivers nothing, fires nothing | `test_ef_14_removing_an_absent_effect_is_false_and_silent` |
+| EF-15 | `first_active_effect(keys)` returns the first active key in iteration order, None when none are active | `test_ef_15_first_active_effect_returns_the_first_active_in_order` |
+| EF-16 | An explicit `condition=` naming an undeclared key is refused with `ValueError` | `test_ef_16_an_undeclared_explicit_condition_is_refused` |
+| EF-17 | Two effects coexist independently — removing one leaves the other's record and condition intact | `test_ef_17_two_effects_coexist_and_one_removal_leaves_the_other` |
+| EF-18 | `duration` and `lifecycle` are stored as given; `duration=None` is a valid permanent record | `test_ef_18_duration_and_lifecycle_are_stored_as_given` |
+| EF-19 | `active_effects` is a persisted Attribute on the holder — it survives a fresh load | `test_ef_19_the_record_store_is_a_persisted_attribute` |
 
 ## Open decisions
 

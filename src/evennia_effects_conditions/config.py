@@ -48,6 +48,11 @@ WALL_CLOCK = "wall_clock"
 #: pinning any wording.
 PROBLEM_PREFIX = "\n  - "
 
+#: Sentinel distinguishing "argument omitted — auto-fill from the spec" from
+#: an explicit None, which suppresses the spec's value. Used by
+#: ``EffectsMixin.apply_named_effect()``.
+UNSET = object()
+
 #: The spec fields that hold message text, audited as str-or-None. An empty
 #: string is legal — it means deliberately silent (docs/design.md § Messages).
 _MESSAGE_FIELDS = ("start_first", "start_third", "end_first", "end_third")
