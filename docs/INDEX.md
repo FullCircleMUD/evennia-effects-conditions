@@ -22,9 +22,9 @@ agreed and decisions are recorded.
 
 ## Design
 
-No design document yet. The only thing recorded so far is the set of principles in
-[../CLAUDE.md](../CLAUDE.md) § Load-bearing architectural principles. A `design.md` lands when there
-is more to say than that.
+| Document | What it covers |
+|---|---|
+| [design.md](design.md) | The agreed shape: the library/consumer split, the catalogue and its specs, the lifecycle model, the hooks, the record, the stated limits |
 
 The system being extracted is described in FCM's
 [design/effects-system.md](../../../design/effects-system.md). It is source material, not a

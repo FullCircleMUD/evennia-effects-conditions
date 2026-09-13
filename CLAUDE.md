@@ -22,21 +22,21 @@ For the design wiki, read [docs/INDEX.md](docs/INDEX.md).
 
 ## Project status
 
-**Scaffolded, nothing built.** The repo structure, the test runner and the documentation surfaces
-exist. No behaviour is agreed yet — [docs/test-plan.md](docs/test-plan.md) carries the open decisions
-and one scaffold case. See [docs/progress.md](docs/progress.md).
-
-There is no `config.py` and no `apps.py` yet, deliberately. Both exist to check settings, and no
-setting has been agreed. They land with the first one.
+**Architecture agreed, build in progress.** The design — what the library holds, what the consumer
+declares, the lifecycle model, the hooks — is recorded in [docs/design.md](docs/design.md). Cases
+land in [docs/test-plan.md](docs/test-plan.md) surface by surface as each is built. See
+[docs/progress.md](docs/progress.md) for what exists.
 
 ## Where to read first
 
-1. [docs/test-plan.md](docs/test-plan.md) — the cases the library commits to. Today that is the
-   scaffold and nothing else. **A behavioural change starts here**, not in the code. **Start here.**
-2. [README.md](README.md) — what the library is and its status.
-3. [docs/INDEX.md](docs/INDEX.md) — map of all design docs.
-4. [docs/installing.md](docs/installing.md) — what a consumer declares.
-5. [docs/interoperability.md](docs/interoperability.md) — this library against its siblings.
+1. [docs/test-plan.md](docs/test-plan.md) — the cases the library commits to, and § Open decisions.
+   **A behavioural change starts here**, not in the code. **Start here.**
+2. [docs/design.md](docs/design.md) — the agreed shape: the library/consumer split, the catalogue,
+   the lifecycles, the hooks, the stated limits.
+3. [README.md](README.md) — what the library is and its status.
+4. [docs/INDEX.md](docs/INDEX.md) — map of all design docs.
+5. [docs/installing.md](docs/installing.md) — what a consumer declares.
+6. [docs/interoperability.md](docs/interoperability.md) — this library against its siblings.
 
 **FCM's [design/effects-system.md](../../design/effects-system.md) describes the system being
 extracted, not this library.** Read it for how the mechanism behaves today. It is not a specification
@@ -64,8 +64,16 @@ library and is not a claim that the design is settled.
 
 ## Out of scope
 
-**Decided as questions arise.** No ruling has been made yet — the scope conversation has not
-happened. Record each ruling here as it is made, with the reasoning, so it is not reopened by the
+Rulings so far, each with its reasoning in [docs/design.md](docs/design.md) § Out of scope:
+
+- **Interpreting effect payloads.** The `effects` list on a record is opaque; the consumer's
+  `at_effects_changed()` override is the only reader.
+- **Convenience wrappers** (`apply_stunned(…)`-style) — consumer sugar over `apply_named_effect()`.
+- **Policy sets** — what a hostile action breaks, what incapacitates, what blocks movement.
+- **Companion scripts** — DoT ticking and timing; the spec only names the script key for cleanup.
+- **Tables.** All state is Attributes on the holder; no models, no alias, no `db_spec.py`.
+
+Record further rulings here as they are made, with the reasoning, so they are not reopened by the
 next session.
 
 ## Working conventions
