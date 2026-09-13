@@ -80,8 +80,9 @@ read it either way.
 
 Every problem across all three settings is collected and raised as one `ImproperlyConfigured`, the
 same text logged at ERROR first — a consumer with three things wrong works through a list, not a
-raise-fix-raise loop. A failed enum falls back to an empty member set so the cross-checks still
-run.
+raise-fix-raise loop. A check whose ground itself failed — a member audit on an enum that did not
+load, a cross-check against a refused lifecycle declaration — is skipped rather than run against a
+stand-in, so one mistake reports as one problem and not as itself plus its downstream noise.
 
 **No aliased-member check.** The plan expected boot to catch two members folding into one, but
 SP-09 refuses a duplicate key at the `class` statement, so a consumer enum that resolves at all
