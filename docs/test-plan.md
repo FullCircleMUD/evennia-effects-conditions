@@ -182,10 +182,23 @@ effect's removal.
 - **An explicit `condition=` argument is validated against the catalogue** (`ValueError` on an
   undeclared key), matching CN-10 — the source accepted any string.
 
+**What happens when the effect is already active is the caller's to name.** `on_active` takes
+`"refuse"`, `"reset"` or `"extend"`, and defaults to refusing — the behaviour every existing call
+already gets. Reset puts the remaining duration back to the one being applied, so a potion drunk
+with ten seconds left is good for another full minute and six drunk together are worth one minute,
+not six. Extend adds to what is left, for the cases where stacking is the point, and takes an
+optional `max_duration` ceiling because unbounded stacking is a stockpiling exploit rather than a
+mechanic.
+
+Neither is an apply. The effect never stopped, so no start messages are delivered, `on_apply` does
+not fire, and the condition ref is left alone — it was never released. Only the clock moves, and
+`extras` merge so a stronger source updates the DC or the damage it set. Both return True, which a
+caller cannot tell from a fresh apply.
+
 | ID | Case | Test function |
 |---|---|---|
 | EF-01 | Apply records the effect — active, record readable with the documented fields, member and raw string interchangeable | `test_ef_01_apply_records_the_effect_with_the_documented_fields` |
-| EF-02 | A second apply anti-stacks: returns False and the standing record is untouched by the second call's arguments | `test_ef_02_a_second_apply_anti_stacks_and_leaves_the_record_alone` |
+| EF-02 | A second apply anti-stacks by default (`on_active="refuse"`): returns False and the standing record is untouched by the second call's arguments | `test_ef_02_a_second_apply_anti_stacks_and_leaves_the_record_alone` |
 | EF-03 | An effect key the catalogue does not declare is refused with `ValueError` | `test_ef_03_an_undeclared_effect_key_is_refused` |
 | EF-04 | Omitted `condition`/`lifecycle` auto-fill from the spec; explicit `None` suppresses the spec's value; an explicit value overrides it | `test_ef_04_spec_auto_fill_explicit_none_and_explicit_override` |
 | EF-05 | An effect-granted condition is added silently — ref +1, active, none of the condition's own messages | `test_ef_05_an_effect_granted_condition_moves_silently` |
@@ -203,6 +216,16 @@ effect's removal.
 | EF-17 | Two effects coexist independently — removing one leaves the other's record and condition intact | `test_ef_17_two_effects_coexist_and_one_removal_leaves_the_other` |
 | EF-18 | `duration` and `lifecycle` are stored as given; `duration=None` is a valid permanent record | `test_ef_18_duration_and_lifecycle_are_stored_as_given` |
 | EF-19 | `active_effects` is a persisted Attribute on the holder — it survives a fresh load | `test_ef_19_the_record_store_is_a_persisted_attribute` |
+| EF-20 | `on_active="reset"` on an active record replaces the remaining duration with the one applied, and returns True | `test_ef_20_reset_replaces_the_remaining_duration` |
+| EF-21 | `on_active="extend"` on an active record adds the applied duration to what remains, and returns True | `test_ef_21_extend_adds_to_what_remains` |
+| EF-22 | `on_active="extend"` with `max_duration` clips the total at the ceiling; reset ignores `max_duration` | `test_ef_22_max_duration_clips_extend_and_reset_ignores_it` |
+| EF-23 | Reset and extend deliver no start messages and do not fire `on_apply` — the effect never stopped | `test_ef_23_readjusting_is_silent_and_does_not_fire_on_apply` |
+| EF-24 | Reset and extend leave the condition ref where it was: no second ref, and the condition stays active | `test_ef_24_readjusting_leaves_the_condition_ref_alone` |
+| EF-25 | Per-application `extras` merge into the standing record on reset and extend, so a stronger source updates what it set | `test_ef_25_extras_merge_into_the_standing_record` |
+| EF-26 | Reset and extend on a wall-clock record reschedule its timer, and `get_effect_remaining_seconds()` agrees with the new duration afterwards | `test_ef_26_readjusting_reschedules_the_wall_clock_timer` |
+| EF-27 | Reset and extend on an inactive effect apply normally — a full apply with messages and `on_apply` | `test_ef_27_readjusting_an_inactive_effect_is_a_normal_apply` |
+| EF-28 | An `on_active` value that is none of the three is refused with `ValueError`, whether or not the effect is active | `test_ef_28_an_unknown_on_active_is_refused` |
+| EF-29 | Against a permanent record: reset gives it the applied duration, extend leaves it permanent; applying `duration=None` with reset makes a timed record permanent and stops its timer | `test_ef_29_readjusting_against_a_permanent_record` |
 
 ## LC — lifecycles
 

@@ -12,7 +12,15 @@ from evennia.typeclasses.attributes import AttributeProperty
 
 import time
 
-from evennia_effects_conditions.config import TIMER_SCRIPT_PREFIX, UNSET, WALL_CLOCK
+from evennia_effects_conditions.config import (
+    EXTEND,
+    ON_ACTIVE_CHOICES,
+    REFUSE,
+    RESET,
+    TIMER_SCRIPT_PREFIX,
+    UNSET,
+    WALL_CLOCK,
+)
 
 
 class ConditionsMixin:
@@ -204,7 +212,8 @@ class EffectsMixin(ConditionsMixin):
 
     def apply_named_effect(self, key, source=None, effects=None,
                            condition=UNSET, duration=None, lifecycle=UNSET,
-                           messages=None, extras=None):
+                           messages=None, extras=None, on_active=REFUSE,
+                           max_duration=None):
         """Apply a named effect. True if applied, False if already active.
 
         ``condition`` and ``lifecycle`` default to the ``UNSET`` sentinel:
@@ -223,10 +232,29 @@ class EffectsMixin(ConditionsMixin):
             duration: int, or None for no expiry of its own.
             messages: per-application overrides, merged over the spec's.
             extras: per-application values, merged over the spec's.
+            on_active: what to do when the effect is already active —
+                ``REFUSE`` (the default), ``RESET`` or ``EXTEND``. Neither
+                readjustment is an apply: the effect never stopped, so no
+                messages are delivered, ``on_apply`` does not fire, and the
+                condition ref is left where it is.
+            max_duration: a ceiling for ``EXTEND``. Ignored by the others,
+                whose result is bounded by what they apply.
         """
         key_str, spec = self._effect_spec(key)
-        if key_str in (self.active_effects or {}):
-            return False
+
+        if on_active not in ON_ACTIVE_CHOICES:
+            raise ValueError(
+                f"on_active must be one of {ON_ACTIVE_CHOICES}, "
+                f"got {on_active!r}."
+            )
+
+        standing = (self.active_effects or {}).get(key_str)
+        if standing is not None:
+            if on_active == REFUSE:
+                return False
+            return self._readjust_effect(
+                key_str, standing, duration, on_active, max_duration, extras
+            )
 
         # Auto-fill from the spec where the caller did not decide.
         if condition is UNSET:
@@ -289,6 +317,54 @@ class EffectsMixin(ConditionsMixin):
 
         if spec.on_apply:
             spec.on_apply(self, source, duration)
+        return True
+
+    def _readjust_effect(self, key, record, duration, on_active,
+                         max_duration, extras):
+        """Reset or extend a record that is already active. Always True.
+
+        Not an apply — the effect never stopped. No start messages, no
+        ``on_apply``, and the condition ref stays where it is because it was
+        never released. Only the clock moves, and ``extras`` merge so a
+        stronger source updates the DC or the damage it set.
+
+        Against a permanent record, whose remaining duration is ``None``:
+        RESET gives it the applied duration, and EXTEND leaves it permanent,
+        there being nothing to add to. Applying ``duration=None`` with RESET
+        makes a timed record permanent and stops its timer.
+        """
+        remaining = record.get("duration")
+
+        if on_active == RESET:
+            new_duration = duration
+        elif remaining is None or duration is None:
+            # Nothing to add to, or nothing to add.
+            new_duration = remaining
+        else:
+            new_duration = remaining + duration
+            if max_duration is not None:
+                new_duration = min(new_duration, max_duration)
+
+        updated = dict(record)
+        updated["duration"] = new_duration
+        if extras:
+            updated["extras"] = {
+                **dict(record.get("extras") or {}),
+                **dict(extras),
+            }
+
+        records = dict(self.active_effects)
+        records[key] = updated
+        self.active_effects = records
+
+        # The record's duration and its timer's interval are one fact; a
+        # reschedule that misses leaves get_effect_remaining_seconds()
+        # answering for a clock nothing else believes.
+        if record.get("lifecycle") == WALL_CLOCK:
+            self._stop_effect_timer(key)
+            if new_duration is not None:
+                self._start_effect_timer(key, new_duration)
+
         return True
 
     def remove_named_effect(self, key):

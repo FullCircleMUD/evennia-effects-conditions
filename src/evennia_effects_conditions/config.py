@@ -57,6 +57,24 @@ PROBLEM_PREFIX = "\n  - "
 #: ``EffectsMixin.apply_named_effect()``.
 UNSET = object()
 
+#: What ``apply_named_effect()`` does when the effect is already active. The
+#: caller names it; the library has no default worth guessing beyond refusing,
+#: which is what every caller that says nothing already gets.
+#:
+#: REFUSE  leave the standing record alone and return False.
+#: RESET   the remaining duration becomes the one being applied — a potion
+#:         drunk with ten seconds left is good for another full dose, and six
+#:         drunk together are worth one.
+#: EXTEND  the applied duration is added to what remains, up to an optional
+#:         ceiling. Unbounded, stacking is a stockpiling exploit rather than a
+#:         mechanic, so a caller wanting it usually wants a cap too.
+REFUSE = "refuse"
+RESET = "reset"
+EXTEND = "extend"
+
+#: The three, for validation and for naming them in a refusal.
+ON_ACTIVE_CHOICES = (REFUSE, RESET, EXTEND)
+
 #: The spec fields that hold message text, audited as str-or-None. An empty
 #: string is legal — it means deliberately silent (docs/design.md § Messages).
 _MESSAGE_FIELDS = ("start_first", "start_third", "end_first", "end_third")

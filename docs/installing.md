@@ -117,6 +117,18 @@ character.clear_effects("combat_rounds")             # when combat ends
 
 The wall clock needs no driving — applying with it and a duration sets its own one-shot timer.
 
+Applying an effect that is already active returns False and changes nothing, unless the caller says
+otherwise:
+
+```python
+character.apply_named_effect(effect, duration=60, on_active="reset")    # back to a full 60
+character.apply_named_effect(effect, duration=60, on_active="extend",   # add 60 to what is left,
+                             max_duration=180)                          # never past 180
+```
+
+Neither delivers start messages or fires `on_apply` — the effect never stopped, so it never
+started again.
+
 ## Required settings
 
 | Setting | What it does | Without it |

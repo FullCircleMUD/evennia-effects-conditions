@@ -816,6 +816,160 @@ class EffectsMixinCoreTests(DjangoTestCase):
         fresh = ObjectDB.objects.get(id=pk)
         self.assertIn("trapped", fresh.active_effects)
 
+    # ── on_active: what a second apply does ────────────────────────── #
+
+    def test_ef_20_reset_replaces_the_remaining_duration(self):
+        """EF-20"""
+        effects = self._effects()
+        self.holder.apply_named_effect(effects.STUNNED, duration=10)
+        self.holder.advance_effects("combat_rounds")
+        self.assertEqual(self.holder.get_named_effect("stunned")["duration"], 9)
+
+        applied = self.holder.apply_named_effect(
+            effects.STUNNED, duration=10, on_active="reset"
+        )
+        self.assertTrue(applied)
+        self.assertEqual(self.holder.get_named_effect("stunned")["duration"], 10)
+
+    def test_ef_21_extend_adds_to_what_remains(self):
+        """EF-21"""
+        effects = self._effects()
+        self.holder.apply_named_effect(effects.STUNNED, duration=10)
+        self.holder.advance_effects("combat_rounds")
+
+        applied = self.holder.apply_named_effect(
+            effects.STUNNED, duration=10, on_active="extend"
+        )
+        self.assertTrue(applied)
+        self.assertEqual(self.holder.get_named_effect("stunned")["duration"], 19)
+
+    def test_ef_22_max_duration_clips_extend_and_reset_ignores_it(self):
+        """EF-22"""
+        effects = self._effects()
+        self.holder.apply_named_effect(effects.STUNNED, duration=10)
+        self.holder.apply_named_effect(
+            effects.STUNNED, duration=10, on_active="extend", max_duration=15
+        )
+        self.assertEqual(self.holder.get_named_effect("stunned")["duration"], 15)
+
+        # Reset is bounded by what it applies, so the ceiling means nothing.
+        self.holder.apply_named_effect(
+            effects.STUNNED, duration=30, on_active="reset", max_duration=15
+        )
+        self.assertEqual(self.holder.get_named_effect("stunned")["duration"], 30)
+
+    def test_ef_23_readjusting_is_silent_and_does_not_fire_on_apply(self):
+        """EF-23"""
+        from tests.spec_stubs import CALLBACK_LOG
+
+        effects = self._effects()
+        self.holder.apply_named_effect(effects.CALLBACKED, duration=5)
+        self.holder.received.clear()
+        CALLBACK_LOG.clear()
+
+        for mode in ("reset", "extend"):
+            self.holder.apply_named_effect(
+                effects.CALLBACKED, duration=5, on_active=mode
+            )
+        self.assertEqual(self.holder.received, [])
+        self.assertEqual(
+            [entry for entry in CALLBACK_LOG if entry[0] == "on_apply"], []
+        )
+
+    def test_ef_24_readjusting_leaves_the_condition_ref_alone(self):
+        """EF-24"""
+        effects = self._effects()
+        self.holder.apply_named_effect(effects.BLESSED, duration=5)
+        self.assertEqual(self.holder.get_condition_count("glowing"), 1)
+
+        self.holder.apply_named_effect(
+            effects.BLESSED, duration=5, on_active="reset"
+        )
+        self.holder.apply_named_effect(
+            effects.BLESSED, duration=5, on_active="extend"
+        )
+        self.assertEqual(self.holder.get_condition_count("glowing"), 1)
+        self.assertTrue(self.holder.has_condition("glowing"))
+
+    def test_ef_25_extras_merge_into_the_standing_record(self):
+        """EF-25"""
+        effects = self._effects()
+        self.holder.apply_named_effect(
+            effects.TRAPPED, duration=5, extras={"damage": 1}
+        )
+        self.holder.apply_named_effect(
+            effects.TRAPPED, duration=5, on_active="reset",
+            extras={"damage": 4},
+        )
+        extras = self.holder.get_named_effect("trapped")["extras"]
+        self.assertEqual(extras["damage"], 4)
+        # The spec's own extras survive — a merge, not a replacement.
+        self.assertEqual(extras["save_dc"], 12)
+
+    def test_ef_26_readjusting_reschedules_the_wall_clock_timer(self):
+        """EF-26"""
+        effects = self._effects()
+        self.holder.apply_named_effect(effects.INVISIBLE, duration=60)
+        self.holder.apply_named_effect(
+            effects.INVISIBLE, duration=300, on_active="reset"
+        )
+        self.assertEqual(
+            self.holder.get_named_effect("invisible")["duration"], 300
+        )
+        remaining = self.holder.get_effect_remaining_seconds("invisible")
+        self.assertIsNotNone(remaining)
+        self.assertLessEqual(remaining, 300)
+        self.assertGreater(remaining, 60)
+
+    def test_ef_27_readjusting_an_inactive_effect_is_a_normal_apply(self):
+        """EF-27"""
+        effects = self._effects()
+        applied = self.holder.apply_named_effect(
+            effects.BLESSED, duration=5, on_active="reset"
+        )
+        self.assertTrue(applied)
+        self.assertTrue(self.holder.has_effect("blessed"))
+        self.assertIn("You are blessed!", self.holder.received)
+        self.assertEqual(self.holder.get_condition_count("glowing"), 1)
+
+    def test_ef_28_an_unknown_on_active_is_refused(self):
+        """EF-28"""
+        effects = self._effects()
+        with self.assertRaises(ValueError):
+            self.holder.apply_named_effect(
+                effects.STUNNED, duration=5, on_active="refresh"
+            )
+        self.holder.apply_named_effect(effects.STUNNED, duration=5)
+        with self.assertRaises(ValueError):
+            self.holder.apply_named_effect(
+                effects.STUNNED, duration=5, on_active="refresh"
+            )
+
+    def test_ef_29_readjusting_against_a_permanent_record(self):
+        """EF-29"""
+        effects = self._effects()
+        # Reset gives a permanent a duration; extend leaves it permanent.
+        self.holder.apply_named_effect(effects.STUNNED, duration=None)
+        self.holder.apply_named_effect(
+            effects.STUNNED, duration=8, on_active="extend"
+        )
+        self.assertIsNone(self.holder.get_named_effect("stunned")["duration"])
+        self.holder.apply_named_effect(
+            effects.STUNNED, duration=8, on_active="reset"
+        )
+        self.assertEqual(self.holder.get_named_effect("stunned")["duration"], 8)
+
+        # Resetting a timed wall-clock record to None makes it permanent and
+        # stops its timer.
+        self.holder.apply_named_effect(effects.INVISIBLE, duration=60)
+        self.holder.apply_named_effect(
+            effects.INVISIBLE, duration=None, on_active="reset"
+        )
+        self.assertIsNone(self.holder.get_named_effect("invisible")["duration"])
+        self.assertIsNone(
+            self.holder.get_effect_remaining_seconds("invisible")
+        )
+
 
 class LifecycleTests(DjangoTestCase):
     """Lifecycles — advancing, clearing, the wall-clock timer (LC)."""

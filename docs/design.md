@@ -97,6 +97,30 @@ raises, record and ref are rolled back and the exception propagates untouched: a
 is the consumer's bug, and the library's job is only to not be left half-applied. Messages, the
 timer and `on_apply` all sequence after the hook succeeds.
 
+### A second apply is the caller's call
+
+An effect is one record per holder, so applying one that is already active has to mean something.
+`on_active` names it, and defaults to `refuse` — return False, leave the standing record alone.
+
+`reset` puts the remaining duration back to the one being applied. A potion drunk with ten seconds
+left is good for another full dose, and six drunk at once are worth one dose, not six. It is
+self-limiting: stockpiling gains nothing, and the only behaviour it rewards is topping up before a
+buff lapses.
+
+`extend` adds the applied duration to what remains, for the cases where stacking is the point. It
+takes an optional `max_duration`, because unbounded it is a stockpiling exploit rather than a
+mechanic — the library never decides what the ceiling is, only that a caller can set one.
+
+**Neither is an apply.** The effect never stopped, so no start messages are delivered, `on_apply`
+does not fire, and the condition ref is untouched — it was never released. Only the clock moves,
+and `extras` merge so a stronger source updates the DC or the damage it set. Both return True,
+which a caller cannot tell from a fresh apply; a game needing to say "you feel it strengthen"
+rather than "you feel it take hold" checks `has_effect()` first.
+
+Against a permanent record, whose remaining duration is `None`: `reset` gives it the applied
+duration, `extend` leaves it permanent. Applying `duration=None` with `reset` makes a timed record
+permanent and stops its timer.
+
 ### Two clocks and a blank, chosen per record
 
 Every effect record is on exactly one lifecycle:
