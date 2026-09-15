@@ -117,16 +117,20 @@ Every effect record is on exactly one lifecycle:
 The reserved wall-clock name may not appear in `EFFECTS_LIFECYCLES`, and `advance_effects()` refuses
 it — otherwise two clocks would drive one record.
 
-**`duration=None` on a countdown lifecycle means "until cleared"**: the record survives every
-`advance_effects()` untouched and falls to `clear_effects()`. This is the stance semantic — an
-effect that belongs to combat but does not expire on its own.
+**`duration=None` on a countdown lifecycle means "until cleared"**: nothing counts the record
+down and it falls to `clear_effects()`. This is the stance semantic — an effect that belongs to
+combat but does not expire on its own.
 
-**Escape.** A spec may carry an `escape_hook(target, record) -> bool`. On each countdown step, a
-hook returning True ends the effect immediately, before any decrement. That is the whole mechanic —
-what a save roll is, which stat it uses, what it prints, all live inside the consumer's callable,
-reading what it needs from `extras`. The hook runs only for records with a numeric duration,
-matching the extracted behaviour; whether a permanent record should be escapable is an open
-question in the test plan.
+**The tick.** A spec may carry an `on_tick(target, record) -> bool`, called once per record on every
+countdown step, before any decrement. What a tick *does* is entirely the consumer's — damage, a save
+roll, a message, any combination — decided inside their callable from what it reads in `extras`. The
+library reads only the return: truthy ends the effect immediately, at its full remaining duration;
+falsy leaves the normal decrement.
+
+It runs for every record on the lifecycle, `duration=None` included — only the decrement is skipped
+for those. A permanent is a record nothing wears down, not one nothing happens to, and a truthy
+return still ends it, so "permanent until you escape it" is expressible without standing a large
+number in for infinity.
 
 ### Messages, without the library filtering them
 
@@ -167,7 +171,7 @@ from runtime values and cannot live on a spec.
 
 Three optional callables per `EffectSpec`, replacing the extracted system's hardcodes and
 registries: `on_apply(target, source, duration)` after a successful apply, `on_remove(target,
-record)` after a removal, and `escape_hook` above. What they do is entirely the consumer's; the
+record)` after a removal, and `on_tick` above. What they do is entirely the consumer's; the
 library only guarantees when they fire.
 
 ## The record
@@ -186,7 +190,7 @@ active_effects = {
 ```
 
 Against the extracted system: `duration_type` is now `lifecycle`, and the `save_*` fields are gone —
-their content rides in `extras`, read by the consumer's escape hook.
+their content rides in `extras`, read by the consumer's tick hook.
 
 ## Stated limits
 

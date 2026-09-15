@@ -123,7 +123,7 @@ class SpecTests(TestCase):
         for field_name in (
             "start_first", "start_third", "end_first", "end_third",
             "condition", "lifecycle",
-            "on_apply", "on_remove", "escape_hook", "companion_script_key",
+            "on_apply", "on_remove", "on_tick", "companion_script_key",
         ):
             self.assertIsNone(getattr(effect_spec, field_name))
         self.assertEqual(dict(effect_spec.extras), {})
@@ -870,9 +870,9 @@ class LifecycleTests(DjangoTestCase):
         self.assertTrue(self.holder.has_effect("blessed"))
         self.assertIsNone(self.holder.get_named_effect("blessed")["duration"])
 
-    # ── the escape hook ────────────────────────────────────────────── #
+    # ── the tick hook ─────────────────────────────────────────────── #
 
-    def test_lc_05_a_true_escape_ends_the_effect_without_a_decrement(self):
+    def test_lc_05_a_true_tick_ends_the_effect_without_a_decrement(self):
         """LC-05"""
         from tests.spec_stubs import CALLBACK_LOG, ESCAPE_RETURN
 
@@ -886,32 +886,48 @@ class LifecycleTests(DjangoTestCase):
         # Ended at its full remaining duration — no decrement first.
         self.assertEqual(removals[0][2]["duration"], 4)
 
-    def test_lc_06_a_false_escape_leaves_the_normal_decrement(self):
+    def test_lc_06_a_false_tick_leaves_the_normal_decrement(self):
         """LC-06"""
         from tests.spec_stubs import CALLBACK_LOG
 
         self.holder.apply_named_effect("escapable", duration=3)
         self.holder.advance_effects("combat_rounds")
         self.assertEqual(self.holder.get_named_effect("escapable")["duration"], 2)
-        escapes = [entry for entry in CALLBACK_LOG if entry[0] == "escape"]
-        self.assertEqual(len(escapes), 1)
-        self.assertEqual(escapes[0][1], self.holder)
-        self.assertEqual(escapes[0][2]["duration"], 3)
+        ticks = [entry for entry in CALLBACK_LOG if entry[0] == "tick"]
+        self.assertEqual(len(ticks), 1)
+        self.assertEqual(ticks[0][1], self.holder)
+        self.assertEqual(ticks[0][2]["duration"], 3)
         self.holder.advance_effects("combat_rounds")
-        escapes = [entry for entry in CALLBACK_LOG if entry[0] == "escape"]
-        self.assertEqual(len(escapes), 2)
+        ticks = [entry for entry in CALLBACK_LOG if entry[0] == "tick"]
+        self.assertEqual(len(ticks), 2)
 
-    def test_lc_07_the_escape_hook_is_not_called_for_permanent_records(self):
+    def test_lc_07_the_tick_hook_runs_for_permanent_records(self):
         """LC-07"""
         from tests.spec_stubs import CALLBACK_LOG, ESCAPE_RETURN
 
-        ESCAPE_RETURN["value"] = True
+        # Falsy: it ticks, and survives with no duration to count down.
+        ESCAPE_RETURN["value"] = False
         self.holder.apply_named_effect("escapable", duration=None)
         self.holder.advance_effects("combat_rounds")
+        ticks = [entry for entry in CALLBACK_LOG if entry[0] == "tick"]
+        self.assertEqual(len(ticks), 1)
+        self.assertEqual(ticks[0][1], self.holder)
+        self.assertIsNone(ticks[0][2]["duration"])
         self.assertTrue(self.holder.has_effect("escapable"))
+
+        # Ticks again — nothing about it wears down.
+        self.holder.advance_effects("combat_rounds")
         self.assertEqual(
-            [entry for entry in CALLBACK_LOG if entry[0] == "escape"], []
+            len([entry for entry in CALLBACK_LOG if entry[0] == "tick"]), 2
         )
+        self.assertTrue(self.holder.has_effect("escapable"))
+
+        # Truthy ends it, which is what makes "permanent until you escape"
+        # expressible without standing a large number in for infinity.
+        ESCAPE_RETURN["value"] = True
+        ended = self.holder.advance_effects("combat_rounds")
+        self.assertEqual(ended, ["escapable"])
+        self.assertFalse(self.holder.has_effect("escapable"))
 
     # ── refusals and clearing ──────────────────────────────────────── #
 

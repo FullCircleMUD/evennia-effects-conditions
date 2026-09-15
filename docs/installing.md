@@ -58,7 +58,7 @@ class MyEffects(NamedEffect):
 ```
 
 A message field left out falls back to a generated generic; an empty string is deliberately
-silent. `EffectSpec` also carries `on_apply` / `on_remove` / `escape_hook` callables,
+silent. `EffectSpec` also carries `on_apply` / `on_remove` / `on_tick` callables,
 `companion_script_key`, and an `extras` mapping for anything game-specific your hooks read.
 
 ## 5. Point the settings at it

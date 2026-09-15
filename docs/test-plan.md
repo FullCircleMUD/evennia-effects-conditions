@@ -110,7 +110,7 @@ case — see [design.md](design.md) § The catalogue.
 | CF-08 | A class that does not subclass the right base is refused | `test_cf_08_a_class_not_subclassing_the_right_base_is_refused` |
 | CF-09 | The library's own base class is refused | `test_cf_09_the_library_base_itself_is_refused` |
 | CF-10 | A member whose message field is neither `str` nor `None` is refused, naming member and field | `test_cf_10_a_non_string_message_field_is_refused_naming_member_and_field` |
-| CF-11 | A member whose `on_apply`/`on_remove`/`escape_hook` is not callable is refused | `test_cf_11_a_non_callable_hook_is_refused` |
+| CF-11 | A member whose `on_apply`/`on_remove`/`on_tick` is not callable is refused | `test_cf_11_a_non_callable_hook_is_refused` |
 | CF-12 | A member whose `companion_script_key` is an empty string is refused | `test_cf_12_an_empty_companion_script_key_is_refused` |
 | CF-13 | An empty consumer enum is allowed — each half of the system stands alone | `test_cf_13_an_empty_consumer_enum_is_allowed` |
 | CF-14 | `EFFECTS_LIFECYCLES` as a bare string is refused (a string is a sequence of letters) | `test_cf_14_lifecycles_as_a_bare_string_is_refused` |
@@ -219,9 +219,17 @@ one-shot persistent script on the holder that removes the effect when it fires. 
 deferred callback. The suite never waits on real time: it asserts the script's shape and invokes
 its firing hook directly, which is exactly what the reactor would do.
 
-The escape hook runs at each countdown step, before the decrement — True ends the effect there and
-then, at its full remaining duration. It runs only for numeric durations; whether a permanent
-record should be escapable is the standing open decision below.
+The tick hook runs at each countdown step, before the decrement, and is handed `(target, record)`.
+What a tick means is the consumer's — damage, a saving throw, a message, any combination, decided
+from the record it is given. The library reads only the return: truthy ends the effect there and
+then, at its full remaining duration, and falsy leaves the normal decrement.
+
+It runs for every record on the lifecycle, `duration=None` included. A permanent is a record
+nothing counts down, not one nothing happens to — a ward that acts each step and never expires on
+its own is as legitimate as one that does, and whether an effect should have been declared that way
+is the consumer's judgement rather than the library's. Only the decrement is skipped for it. A
+truthy return still ends it, which is what makes "permanent until you escape it" expressible without
+standing a large number in for infinity.
 
 `advance_effects()` refuses the wall-clock name — two clocks may not drive one record — and
 refuses an undeclared name, which is a typo by the same argument as CN-10.
@@ -232,9 +240,9 @@ refuses an undeclared name, which is a typo by the same argument as CN-10.
 | LC-02 | A record reaching zero is removed as a normal removal — end messages, condition ref decremented | `test_lc_02_expiry_is_a_normal_removal` |
 | LC-03 | `advance_effects()` returns exactly the keys that ended this step; survivors are not in it | `test_lc_03_the_return_names_exactly_what_ended` |
 | LC-04 | A `duration=None` record on a countdown lifecycle survives every advance untouched | `test_lc_04_a_permanent_record_survives_every_advance` |
-| LC-05 | An escape hook returning True ends the effect that step, without a decrement — the record ends at its full remaining duration | `test_lc_05_a_true_escape_ends_the_effect_without_a_decrement` |
-| LC-06 | An escape hook returning False leaves the normal decrement; the hook is called once per advance with `(target, record)` | `test_lc_06_a_false_escape_leaves_the_normal_decrement` |
-| LC-07 | The escape hook is not called for `duration=None` records | `test_lc_07_the_escape_hook_is_not_called_for_permanent_records` |
+| LC-05 | A tick hook returning True ends the effect that step, without a decrement — the record ends at its full remaining duration | `test_lc_05_a_true_tick_ends_the_effect_without_a_decrement` |
+| LC-06 | A tick hook returning False leaves the normal decrement; the hook is called once per advance with `(target, record)` | `test_lc_06_a_false_tick_leaves_the_normal_decrement` |
+| LC-07 | The tick hook is called for `duration=None` records; only the decrement is skipped, and a truthy return ends the effect | `test_lc_07_the_tick_hook_runs_for_permanent_records` |
 | LC-08 | `advance_effects()` refuses the wall-clock name and undeclared names with `ValueError` | `test_lc_08_advance_refuses_the_wall_clock_and_undeclared_names` |
 | LC-09 | `clear_effects(name)` removes everything on that name — `duration=None` included — with messages, returning the removed keys; other lifecycles untouched | `test_lc_09_clear_removes_everything_on_one_lifecycle` |
 | LC-10 | A wall-clock apply creates a one-shot timer script on the holder — named for the effect, interval = duration — and its firing removes the effect | `test_lc_10_a_wall_clock_apply_creates_the_one_shot_timer` |
@@ -298,10 +306,14 @@ place companion scripts are touched, per the ported asymmetry recorded in design
 Deliberately without cases. A case is a commitment, so nothing becomes one until it has been
 decided.
 
-- **Decided 2026-09-13: the escape hook fires for numeric durations only** (the behaviour LC-07
-  pins). `duration=None` is for things that genuinely persist — a stance, a permanent ward — and
-  an escapable hold is properly a countdown with an escape hook, not a permanent. A "held until
-  you save" effect is declared with a large duration, which behaves identically in play.
+- **Decided 2026-09-14: the tick hook fires for every record on the lifecycle**, permanents
+  included (the behaviour LC-07 pins). It replaces a rule decided while the hook only answered
+  "did they break free", where holding it to countdowns was sound — a permanent that can be escaped
+  is a countdown in disguise. Once the hook decides what an effect *does* each step, the same rule
+  makes a permanent that acts inexpressible, and fails silently: the spec is accepted, the callable
+  validated, and never called. Declaring a large duration in place of infinity was the workaround,
+  and a magic number is not something this library should require. What a permanent effect should
+  do each step is the consumer's judgement.
 - **[TBD — needs discussion: does a `contrib/` ever exist?]** Candidates would be display commands
   (`effects`, `conditions`) and a reference `effects_broadcast` override. Nothing is scaffolded
   until something is decided.

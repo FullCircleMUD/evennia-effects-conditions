@@ -54,12 +54,12 @@ def _recording_on_remove(target, record):
     CALLBACK_LOG.append(("on_remove", target, record))
 
 
-#: What the recording escape hook answers — tests flip "value" per case.
+#: What the recording tick hook answers — tests flip "value" per case.
 ESCAPE_RETURN = {"value": False}
 
 
-def _recording_escape(target, record):
-    CALLBACK_LOG.append(("escape", target, dict(record)))
+def _recording_tick(target, record):
+    CALLBACK_LOG.append(("tick", target, dict(record)))
     return ESCAPE_RETURN["value"]
 
 
@@ -107,7 +107,7 @@ class GoodEffects(NamedEffect):
     ESCAPABLE = EffectSpec(
         "escapable",
         lifecycle="combat_rounds",
-        escape_hook=_recording_escape,
+        on_tick=_recording_tick,
         on_remove=_recording_on_remove,
     )
     # Names an external companion script for clear_all_effects to stop (CL-04).

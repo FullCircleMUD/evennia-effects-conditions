@@ -381,13 +381,13 @@ class EffectsMixin(ConditionsMixin):
 
         The consumer calls this where its own event happens — a combat
         round, a dance, whatever the name means. Per record on the
-        lifecycle: the spec's escape hook may end it at its full remaining
-        duration; otherwise the duration decrements, and zero expires it
-        through the normal removal path. ``duration=None`` records are
+        lifecycle: the spec's tick hook runs first and may end it at its
+        full remaining duration; otherwise the duration decrements, and zero
+        expires it through the normal removal path. ``duration=None`` records are
         never touched — they last until ``clear_effects()``.
 
         Returns:
-            list — the keys that ended on this step, escape and expiry
+            list — the keys that ended on this step, tick and expiry
             alike, in record order.
         """
         self._check_countdown_lifecycle(lifecycle)
@@ -396,11 +396,13 @@ class EffectsMixin(ConditionsMixin):
         for key, record in dict(self.active_effects).items():
             if record.get("lifecycle") != lifecycle:
                 continue
-            if record.get("duration") is None:
-                continue
             spec = self._effect_spec(key)[1]
-            if spec.escape_hook and spec.escape_hook(self, record):
+            if spec.on_tick and spec.on_tick(self, record):
                 ended.append(key)
+                continue
+            if record.get("duration") is None:
+                # Ticked, and there is nothing to count down. A permanent is
+                # a record nothing wears down, not one nothing happens to.
                 continue
             remaining = record["duration"] - 1
             if remaining <= 0:

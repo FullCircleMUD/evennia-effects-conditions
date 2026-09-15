@@ -62,7 +62,7 @@ UNSET = object()
 _MESSAGE_FIELDS = ("start_first", "start_third", "end_first", "end_third")
 
 #: The EffectSpec fields that hold callables.
-_HOOK_FIELDS = ("on_apply", "on_remove", "escape_hook")
+_HOOK_FIELDS = ("on_apply", "on_remove", "on_tick")
 
 
 def get_condition_enum():

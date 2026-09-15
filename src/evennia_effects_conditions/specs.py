@@ -69,7 +69,7 @@ class EffectSpec:
     lifecycle: Optional[str] = None
     on_apply: Optional[Callable] = None
     on_remove: Optional[Callable] = None
-    escape_hook: Optional[Callable] = None
+    on_tick: Optional[Callable] = None
     companion_script_key: Optional[str] = None
     extras: Mapping[str, Any] = field(default_factory=dict)
 
