@@ -27,6 +27,7 @@ Behaviour is agreed here first, before any test or code — see
 | `LC` | Lifecycles — advancing countdowns, clearing them, the wall-clock timer |
 | `BK` | The break verbs — forced, silent removal on a trigger the consumer owns |
 | `CL` | `clear_all_effects()` — the silent full strip for death-shaped moments |
+| `PB` | `bucket_effects()` — grouping a store's payloads by their type |
 
 ## Fixtures
 
@@ -323,6 +324,52 @@ place companion scripts are touched, per the ported asymmetry recorded in design
 | CL-03 | Record-contributed condition refs decrement; bare grants survive | `test_cl_03_record_refs_decrement_and_bare_grants_survive` |
 | CL-04 | Wall-clock timers and spec-declared companion scripts are stopped | `test_cl_04_timers_and_companion_scripts_are_stopped` |
 | CL-05 | One `at_effects_changed()` for the whole strip, and no `on_remove` calls | `test_cl_05_one_hook_call_and_no_on_remove` |
+
+## PB — bucketing payloads
+
+`bucket_effects(records)` takes an effect store — `{key: {"effects": [...], ...}}` — and returns
+`{type: [payload, ...]}`. One pass over the payloads, grouped by the `type` each carries.
+
+It exists because a consumer with several independent things to rebuild otherwise walks the whole
+store once per thing. FCM has three — stats, size, damage resistance — each reacting to the same
+change and each ignoring the payload kinds it does not own. Bucketing once turns N passes into one
+pass and N dictionary lookups.
+
+**This is the library's only assumption about what is inside a payload: that it is a mapping carrying
+a `type`.** The `effects` list is otherwise still opaque and still stored verbatim — nothing here
+knows or cares what any type *means*, and the function behaves identically if every type string is a
+random UUID. Grouping by a key is not interpreting.
+
+| ID | Case | Test function |
+|---|---|---|
+| PB-01 | An empty store, and `None`, both give an empty dict | `test_pb_01_an_empty_store_gives_an_empty_dict` |
+| PB-02 | One payload lands in a bucket named by its type | `test_pb_02_a_payload_lands_under_its_type` |
+| PB-03 | Payloads sharing a type collect in one list, in the order met | `test_pb_03_payloads_of_one_type_collect_in_order` |
+| PB-04 | Payloads of different types are held apart | `test_pb_04_different_types_are_held_apart` |
+| PB-05 | Payloads are gathered across records, not just within one | `test_pb_05_payloads_are_gathered_across_records` |
+| PB-06 | A record with no `effects` key, and one with an empty list, contribute nothing | `test_pb_06_a_record_without_payloads_contributes_nothing` |
+| PB-07 | A payload with no `type`, or an empty one, raises `UntypedEffectError` naming the record | `test_pb_07_a_payload_with_no_type_raises` |
+| PB-08 | A payload that is not a mapping raises `UntypedEffectError` naming the record | `test_pb_08_a_payload_that_is_not_a_mapping_raises` |
+| PB-09 | The returned dict is plain — a missing type is absent rather than created on read | `test_pb_09_the_returned_dict_is_plain` |
+| PB-10 | The payloads in a bucket are the stored objects, not copies | `test_pb_10_the_payloads_are_the_stored_objects` |
+
+PB-03's ordering is asserted because a caller totalling contributions per type needs the answer to be
+the same on every call. Which order records come out of the store is the store's business, but two
+payloads within one record must not be reordered.
+
+PB-07 and PB-08 raise rather than skipping, and the record key is in the message because knowing a
+payload is malformed without knowing which of twenty records holds it is barely better than nothing.
+An effect stored with nothing saying what it is cannot be acted on by any consumer, so there is no
+reading of it that is recoverable — a skip would leave an effect that is applied, visible in the
+store, and silently inert.
+
+PB-09 is why it is a plain dict rather than a `defaultdict`. Several receivers read the same bucket
+dict during one dispatch, and a defaultdict would have each miss insert an empty list while the
+others are still reading.
+
+PB-10 records that nothing is copied. A caller that mutates a payload it was handed is mutating the
+stored record, and that is the caller's business to avoid — copying every payload on every rebuild to
+defend against it would cost more than it saves.
 
 ## Open decisions
 

@@ -66,8 +66,10 @@ library and is not a claim that the design is settled.
 
 Rulings so far, each with its reasoning in [docs/design.md](docs/design.md) § Out of scope:
 
-- **Interpreting effect payloads.** The `effects` list on a record is opaque; the consumer's
-  `at_effects_changed()` override is the only reader.
+- **Interpreting effect payloads.** What any effect *means* is the consumer's. `bucket_effects()`
+  reads one key — `type` — to sort payloads into buckets, and nothing else; sorting by a key is not
+  interpreting, and the function behaves identically if every type string is a random UUID. Acting on
+  a payload stays with the consumer's `at_effects_changed()` override.
 - **Convenience wrappers** (`apply_stunned(…)`-style) — consumer sugar over `apply_named_effect()`.
 - **Policy sets** — what a hostile action breaks, what incapacitates, what blocks movement.
 - **Companion scripts** — DoT ticking and timing; the spec only names the script key for cleanup.
@@ -137,6 +139,7 @@ evennia-effects-conditions/
 │       ├── config.py                  # all constants, accessors, check_settings()
 │       ├── apps.py                    # AppConfig; ready() runs the boot check
 │       ├── mixins.py                  # ConditionsMixin + EffectsMixin
+│       ├── payloads.py                # bucket_effects() — sorting a store's payloads by type
 │       ├── scripts.py                 # EffectsTimerScript (the wall clock)
 │       ├── log.py                     # binds effects_conditions_log via evennia-logging-extension
 │       └── tests.py                   # unit tests, run via runtests.py

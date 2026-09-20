@@ -25,6 +25,10 @@ from evennia_effects_conditions.config import (
     get_effect_enum,
     get_lifecycles,
 )
+from evennia_effects_conditions.payloads import (
+    UntypedEffectError,
+    bucket_effects,
+)
 from evennia_effects_conditions.specs import (
     Condition,
     ConditionSpec,
@@ -1326,3 +1330,114 @@ class ClearAllTests(DjangoTestCase):
         self.assertEqual(
             [entry for entry in CALLBACK_LOG if entry[0] == "on_remove"], []
         )
+
+
+class BucketEffectsTests(TestCase):
+    """PB — grouping a store's payloads by their type."""
+
+    def test_pb_01_an_empty_store_gives_an_empty_dict(self):
+        """PB-01"""
+        self.assertEqual(bucket_effects({}), {})
+        self.assertEqual(bucket_effects(None), {})
+
+    def test_pb_02_a_payload_lands_under_its_type(self):
+        """PB-02"""
+        payload = {"type": "stat_bonus", "stat": "strength", "value": 1}
+
+        self.assertEqual(
+            bucket_effects({"ring": {"effects": [payload]}}),
+            {"stat_bonus": [payload]},
+        )
+
+    def test_pb_03_payloads_of_one_type_collect_in_order(self):
+        """PB-03"""
+        # A caller totalling per type needs the same answer every call. Which
+        # order records come out of the store is the store's business; two
+        # payloads inside one record must not be reordered.
+        first = {"type": "stat_bonus", "stat": "strength", "value": 1}
+        second = {"type": "stat_bonus", "stat": "wisdom", "value": 2}
+
+        buckets = bucket_effects({"ring": {"effects": [first, second]}})
+
+        self.assertEqual(buckets["stat_bonus"], [first, second])
+
+    def test_pb_04_different_types_are_held_apart(self):
+        """PB-04"""
+        stat = {"type": "stat_bonus", "stat": "strength", "value": 1}
+        size = {"type": "size_shift", "value": 1}
+
+        buckets = bucket_effects({"spell": {"effects": [stat, size]}})
+
+        self.assertEqual(buckets, {"stat_bonus": [stat], "size_shift": [size]})
+
+    def test_pb_05_payloads_are_gathered_across_records(self):
+        """PB-05"""
+        ring = {"type": "stat_bonus", "stat": "strength", "value": 1}
+        spell = {"type": "stat_bonus", "stat": "strength", "value": 2}
+
+        buckets = bucket_effects(
+            {
+                "ring": {"effects": [ring]},
+                "spell": {"effects": [spell]},
+            }
+        )
+
+        self.assertCountEqual(buckets["stat_bonus"], [ring, spell])
+
+    def test_pb_06_a_record_without_payloads_contributes_nothing(self):
+        """PB-06"""
+        # A condition with no payload is the ordinary case, not an error.
+        self.assertEqual(
+            bucket_effects(
+                {
+                    "stunned": {"condition": "stunned"},
+                    "blinded": {"effects": []},
+                }
+            ),
+            {},
+        )
+
+    def test_pb_07_a_payload_with_no_type_raises(self):
+        """PB-07"""
+        for payload in ({"value": 1}, {"type": "", "value": 1},
+                        {"type": None, "value": 1}):
+            with self.subTest(payload):
+                with self.assertRaises(UntypedEffectError) as caught:
+                    bucket_effects({"mystery": {"effects": [payload]}})
+
+                # The record key, or you know a payload is broken without
+                # knowing which of twenty records holds it.
+                self.assertIn("mystery", str(caught.exception))
+
+    def test_pb_08_a_payload_that_is_not_a_mapping_raises(self):
+        """PB-08"""
+        for payload in ("stat_bonus", 7, ["stat_bonus", 1], None):
+            with self.subTest(payload):
+                with self.assertRaises(UntypedEffectError) as caught:
+                    bucket_effects({"mystery": {"effects": [payload]}})
+
+                self.assertIn("mystery", str(caught.exception))
+
+    def test_pb_09_the_returned_dict_is_plain(self):
+        """PB-09"""
+        # Several receivers read one bucket dict during a dispatch. A
+        # defaultdict would have each miss insert an empty list while the
+        # others are still reading it.
+        buckets = bucket_effects(
+            {"ring": {"effects": [{"type": "stat_bonus", "value": 1}]}}
+        )
+
+        self.assertIs(type(buckets), dict)
+        with self.assertRaises(KeyError):
+            buckets["size_shift"]
+        self.assertNotIn("size_shift", buckets)
+
+    def test_pb_10_the_payloads_are_the_stored_objects(self):
+        """PB-10"""
+        # Nothing is copied. Copying every payload on every rebuild to guard
+        # against a caller that mutates one would cost more than it saves.
+        payload = {"type": "stat_bonus", "stat": "strength", "value": 1}
+
+        buckets = bucket_effects({"ring": {"effects": [payload]}})
+
+        self.assertIs(buckets["stat_bonus"][0], payload)

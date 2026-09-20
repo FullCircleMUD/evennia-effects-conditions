@@ -24,6 +24,8 @@ def __getattr__(name):
         "EffectsTimerScript": "evennia_effects_conditions.scripts",
         "WALL_CLOCK": "evennia_effects_conditions.config",
         "UNSET": "evennia_effects_conditions.config",
+        "bucket_effects": "evennia_effects_conditions.payloads",
+        "UntypedEffectError": "evennia_effects_conditions.payloads",
     }
     if name in exports:
         from importlib import import_module
