@@ -21,7 +21,8 @@ The library holds **state and lifecycle**. The game holds **everything a state m
 | The countdown machinery, stepped from outside; the wall-clock timer, driven from inside | What a round, a dance or a day is, and when one has happened |
 | Delivering first-person text; one seam for third-person broadcast | Who in the room is allowed to see the broadcast |
 | The break and clear verbs | When to call them, and which effects they cover |
-| Calling `at_effects_changed()` after every change | What a stat is, and rebuilding stats from the records |
+| Calling `at_effects_changed()` after a payload changes | What a stat is, and rebuilding stats from the records |
+| Calling `at_conditions_changed()` on a condition's transitions | What a condition means, and what to do about one arriving or leaving |
 
 Everything below follows from that split.
 
@@ -90,6 +91,30 @@ directly. FCM's `_recalculate_stats()` is that override in its game; nothing abo
 The consequence is a contract, not code: **whatever a consumer's hook derives from the records, it
 must fully re-derive on every call.** The library guarantees only that the hook fires after the
 records change.
+
+### Two seams, because there are two questions
+
+`at_effects_changed()` fires **only when a payload was involved**, and that is deliberate: an effect
+changing no number leaves every derived value correct, so waking a rebuild for it is work with no
+result. An effect whose whole purpose is a condition — flight, water breathing, darkvision — carries
+no payload and announces nothing through it.
+
+That leaves a consumer reacting to the *condition* with nothing to listen to, which is what
+`at_conditions_changed(condition, is_held)` answers. It fires on a condition's 0→1 and →0 transitions
+however they came about: on an effect, on a bare `add_condition()`, on a break, on a full strip. No
+payload is involved or asked about.
+
+**Transitions, not counts.** The ref count is the library's business. A condition held by two sources
+and released by one is still held, and a consumer told about that decrement would be re-asking a
+question whose answer had not moved.
+
+**Both live on the ref-count helpers**, which is why every path reaches them. `break_effect()` zeroes
+a condition rather than decrementing it, and it does so *through* the helper for exactly this reason —
+a consumer whose invisibility was shattered hears it as readily as one whose spell expired.
+
+Splitting them rather than widening `at_effects_changed()` keeps each cheap. A game with stats and no
+condition reactions implements one; a game reacting to conditions and deriving nothing implements the
+other; neither pays for the one it does not want.
 
 **Apply is unwound if the hook raises.** `apply_named_effect()` persists the record and the
 condition ref first — the hook has to be able to see them — then calls the hook inside a try. If it

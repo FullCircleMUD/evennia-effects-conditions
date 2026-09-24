@@ -553,6 +553,122 @@ class ConditionsMixinTests(DjangoTestCase):
         self.assertEqual(dict(fresh.conditions), {"hidden": 1})
 
 
+class ConditionsChangedHookTests(DjangoTestCase):
+    """`at_conditions_changed()` — the seam for a condition arriving or leaving (CN).
+
+    Separate from `ConditionsMixinTests` because most of these need the effects
+    mixin: a condition arriving on an effect, a break zeroing one, a full strip
+    clearing several. Both stubs record the hook, so a case reads back exactly
+    which transitions were announced.
+    """
+
+    def setUp(self):
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import ConditionsObjectStub, EffectsObjectStub
+
+        self.holder = create_object(ConditionsObjectStub, key="holder")
+        self.actor = create_object(EffectsObjectStub, key="actor")
+
+    def test_cn_12_the_hook_fires_on_both_transitions(self):
+        """CN-12"""
+        self.holder.add_condition("hidden")
+        self.holder.remove_condition("hidden")
+
+        self.assertEqual(
+            self.holder.condition_calls, [("hidden", True), ("hidden", False)]
+        )
+
+    def test_cn_13_the_hook_is_silent_between_transitions(self):
+        """CN-13
+
+        A condition held by two sources and released by one is still held. A
+        consumer re-checking on every increment would be asking a question whose
+        answer had not changed.
+        """
+        self.holder.add_condition("hidden")
+        self.holder.add_condition("hidden")
+        self.holder.remove_condition("hidden")
+
+        self.assertEqual(self.holder.condition_calls, [("hidden", True)])
+
+        self.holder.remove_condition("hidden")
+
+        self.assertEqual(
+            self.holder.condition_calls, [("hidden", True), ("hidden", False)]
+        )
+
+    def test_cn_14_the_hook_fires_for_a_condition_on_an_effect(self):
+        """CN-14"""
+        self.actor.apply_named_effect("blessed", duration=2)
+        applied = list(self.actor.condition_calls)
+
+        self.actor.remove_named_effect("blessed")
+
+        self.assertEqual(applied, [("glowing", True)])
+        self.assertEqual(
+            self.actor.condition_calls, [("glowing", True), ("glowing", False)]
+        )
+
+    def test_cn_15_the_hook_fires_when_a_break_zeroes_a_condition(self):
+        """CN-15
+
+        `break_effect()` zeroes the count rather than decrementing it, and does
+        so without going through the ref-count helper. A consumer whose
+        invisibility was shattered has to hear it as readily as one whose spell
+        expired.
+        """
+        self.actor.apply_named_effect("blessed", duration=2)
+        self.actor.condition_calls.clear()
+
+        self.actor.break_effect("blessed")
+
+        self.assertEqual(self.actor.condition_calls, [("glowing", False)])
+
+    def test_cn_16_the_hook_fires_for_each_condition_a_full_strip_clears(self):
+        """CN-16"""
+        self.actor.apply_named_effect("blessed", duration=2)
+        self.actor.apply_named_effect("invisible", duration=30)
+        self.actor.condition_calls.clear()
+
+        self.actor.clear_all_effects()
+
+        self.assertEqual(
+            sorted(self.actor.condition_calls),
+            sorted([("glowing", False), ("hidden", False)]),
+        )
+
+    def test_cn_17_the_hook_fires_whether_or_not_a_payload_was_carried(self):
+        """CN-17
+
+        The case the seam exists for. `at_effects_changed()` is deliberately
+        silent for an effect carrying no stat payload — a flight buff, a
+        water-breathing potion — so a consumer reacting to the condition has no
+        other way to hear about it.
+        """
+        self.actor.apply_named_effect("blessed", duration=2)
+
+        self.assertEqual(self.actor.condition_calls, [("glowing", True)])
+        self.assertEqual(self.actor.hook_calls, [])
+
+    def test_cn_18_the_hook_is_a_no_op_on_the_mixin(self):
+        """CN-18
+
+        A consumer wanting only stat rebuilds implements nothing and pays
+        nothing, as `at_effects_changed()` is a no-op until overridden.
+        """
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import PlainConditionsStub
+
+        plain = create_object(PlainConditionsStub, key="plain")
+
+        plain.add_condition("hidden")
+        plain.remove_condition("hidden")
+
+        self.assertFalse(plain.has_condition("hidden"))
+
+
 class EffectsMixinCoreTests(DjangoTestCase):
     """The effects mixin core — apply, remove, query, the hook (EF)."""
 

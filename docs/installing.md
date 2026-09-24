@@ -89,7 +89,7 @@ ref-counted flags can mix in `ConditionsMixin` alone.
 
 ## 7. Answer the hooks
 
-Two override points, both optional to start with:
+Three override points, all optional to start with:
 
 ```python
 class Character(EffectsMixin, DefaultCharacter):
@@ -98,13 +98,39 @@ class Character(EffectsMixin, DefaultCharacter):
         """Rebuild whatever your game means by stats, from scratch."""
         # read self.active_effects, re-derive everything it feeds
 
+    def at_conditions_changed(self, condition, is_held):
+        """React to something becoming true of this character, or ceasing to be."""
+        # condition is the key; is_held is True on arrival, False on departure
+
     def effects_broadcast(self, template):
         """Filter third-person effect messages, if your game has concealment."""
         # the template arrives with {name} unformatted
 ```
 
-The default `at_effects_changed()` does nothing — right for a game whose effects are conditions
-and messages only. The default broadcast sends to the holder's room, unfiltered.
+All three default to doing nothing, so a game takes only the ones it needs. The default broadcast
+sends to the holder's room, unfiltered.
+
+**The first two answer different questions, and the difference matters.**
+
+`at_effects_changed()` means *this holder's derived stats are now wrong*. It fires only when the
+effect applied or removed carried a stat payload, because an effect that changes no number leaves
+every derived value correct. A game with no stats never needs it.
+
+`at_conditions_changed()` means *the set of things true of this holder has changed*. It fires on a
+condition's 0→1 and →0 transitions however they happened — on an effect, on a bare `add_condition()`,
+on a break, on a full strip — and regardless of any payload.
+
+So a flight buff, a water-breathing potion or a darkvision spell fires the **second** and not the
+first: each grants a condition and changes no number. If your game reacts to a condition arriving or
+leaving — refusing something, starting a timer, moving the holder — that reaction belongs on
+`at_conditions_changed()`. Reaching for `at_effects_changed()` will work for every effect that
+happens to carry a payload and silently miss the ones that do not.
+
+An effect can fire both, either, or neither.
+
+**Transitions only.** A condition held by two sources and released by one is still held, and nothing
+is announced for it. You are told when something becomes true and when it stops, never about the
+counting in between.
 
 ## 8. Drive your lifecycles
 

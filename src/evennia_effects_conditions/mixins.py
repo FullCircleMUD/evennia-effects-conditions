@@ -70,6 +70,29 @@ class ConditionsMixin:
         key, _ = self._condition_spec(condition)
         return self.conditions.get(key, 0)
 
+    def at_conditions_changed(self, condition, is_held):
+        """Called when a condition starts or stops being true of this holder.
+
+        A no-op here. Override it to react to something becoming true or ceasing
+        to be — a consumer that only wants stat rebuilds implements nothing and
+        pays nothing.
+
+        Args:
+            condition (str): the condition's key.
+            is_held (bool): True when it has just become held, False when the
+                last source has let go.
+
+        **This is not `at_effects_changed()`.** That one means *this holder's
+        derived stats are now wrong*, and it is deliberately silent for an effect
+        carrying no stat payload — a flight buff, a water-breathing potion, a
+        darkvision spell. This one means *the set of things true of this holder
+        has changed*, and it fires for all of them. An effect can fire both,
+        either, or neither.
+
+        **Transitions only.** A condition held by two sources and released by one
+        is still held, and nothing is announced for it. See CN-13.
+        """
+
     def _add_condition_raw(self, key):
         """Increment the count for a resolved key. True on the 0→1 transition.
 
@@ -80,6 +103,8 @@ class ConditionsMixin:
         old_count = counts.get(key, 0)
         counts[key] = old_count + 1
         self.conditions = counts
+        if old_count == 0:
+            self.at_conditions_changed(key, True)
         return old_count == 0
 
     def _remove_condition_raw(self, key):
@@ -97,6 +122,8 @@ class ConditionsMixin:
         else:
             counts[key] = old_count - 1
         self.conditions = counts
+        if old_count == 1:
+            self.at_conditions_changed(key, False)
         return old_count == 1
 
     def add_condition(self, condition):
@@ -596,9 +623,12 @@ class EffectsMixin(ConditionsMixin):
             return False
 
         if condition_key:
-            counts = dict(self.conditions)
-            counts.pop(condition_key, None)
-            self.conditions = counts
+            # Through the helper rather than popping by hand, so the transition
+            # is announced — a consumer whose invisibility was shattered has to
+            # hear it as readily as one whose spell expired. Looped because a
+            # break zeroes the count however many sources held it. See CN-15.
+            while self.conditions.get(condition_key, 0) > 0:
+                self._remove_condition_raw(condition_key)
 
         had_payload = False
         if record is not None:

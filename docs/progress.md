@@ -2,6 +2,24 @@
 
 Running log of milestones with links to evidence. Reverse chronological — newest first.
 
+## 2026-09-24 — a second consumer seam for conditions
+
+115 tests, all passing. `CN-12` to `CN-18` added `at_conditions_changed(condition, is_held)`, a no-op
+override point that fires on a condition's 0→1 and →0 transitions.
+
+It exists because `at_effects_changed()` could not answer the question. That hook fires only when the
+effect applied or removed carried a stat payload — right for a stat rebuild, and silent for every
+effect whose whole purpose is a condition. FCM found it from the other end: a room type needed to know
+when flight lapsed, and a flight buff carries no payload, so nothing ever told it.
+
+- Both ref-count helpers announce their own transition, so `apply_named_effect`,
+  `remove_named_effect`, `clear_all_effects` and the public `add_condition` / `remove_condition` are
+  covered by one edit each.
+- `break_effect()` zeroed a condition by hand, bypassing the helper and its announcement. Now routed
+  through it, looping to zero — same end state, one transition emitted. `CN-15` is that case, and
+  every `BK` case still passes.
+- `CN-17` is the case the seam exists for: the hook fires whether or not a payload was carried.
+
 ## 2026-09-13 — the core built, surface by surface
 
 88 tests, all passing. 79 new cases across seven surfaces, `SP-01` to `CL-05`, each surface agreed

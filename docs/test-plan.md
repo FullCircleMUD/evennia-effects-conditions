@@ -157,6 +157,33 @@ name.
 | CN-09 | An `effects_broadcast` override receives the template unformatted, `{name}` intact | `test_cn_09_a_broadcast_override_receives_the_template_unformatted` |
 | CN-10 | A key the catalogue does not declare is refused with `ValueError`, add and remove alike | `test_cn_10_an_undeclared_key_is_refused_add_and_remove_alike` |
 | CN-11 | The store is an Evennia Attribute on the holder, written by assignment — it survives a fresh load of the object | `test_cn_11_the_store_is_a_persisted_attribute_on_the_holder` |
+| CN-12 | `at_conditions_changed()` fires on the 0→1 add and the →0 remove, carrying the key and whether it is now held | `test_cn_12_the_hook_fires_on_both_transitions` |
+| CN-13 | It does not fire on an increment or a decrement that leaves the flag where it was | `test_cn_13_the_hook_is_silent_between_transitions` |
+| CN-14 | It fires for a condition arriving or leaving on an effect, not only for a bare add or remove | `test_cn_14_the_hook_fires_for_a_condition_on_an_effect` |
+| CN-15 | It fires when `break_effect()` zeroes a condition | `test_cn_15_the_hook_fires_when_a_break_zeroes_a_condition` |
+| CN-16 | It fires for each condition `clear_all_effects()` clears | `test_cn_16_the_hook_fires_for_each_condition_a_full_strip_clears` |
+| CN-17 | It fires whether or not the effect carried a stat payload | `test_cn_17_the_hook_fires_whether_or_not_a_payload_was_carried` |
+| CN-18 | It is a no-op on the mixin, so a consumer answering nothing is not an error | `test_cn_18_the_hook_is_a_no_op_on_the_mixin` |
+
+**`at_conditions_changed()` is the second consumer seam, and it is not `at_effects_changed()`.**
+That one means *this actor's derived stats are now wrong*, and it is deliberately silent for an effect
+carrying no stat payload — a flight buff, a water-breathing potion, a darkvision spell. This one means
+*the set of things true of this actor has changed*, and it fires for all of them.
+
+A consumer needing to react to a condition arriving or leaving has no other way to hear about it. Both
+seams exist because they answer different questions: one is "rebuild the numbers", the other is "something
+became true or stopped being true". An effect can fire both, either, or neither.
+
+It fires on transitions only, which is what `CN-13` pins. A condition held by two sources and released by
+one is still held, and a consumer re-checking on every increment would be asking a question whose answer
+had not changed.
+
+`CN-15` and `CN-16` are the paths that bypass the ref-count helpers today. `break_effect()` zeroes the
+count by hand rather than going through `_remove_condition_raw`, so it needs the call routed or added; a
+consumer whose invisibility was shattered has to hear it as readily as one whose spell expired.
+
+`CN-18` keeps the seam free. A consumer that only wants stat rebuilds implements nothing and pays
+nothing, exactly as `at_effects_changed()` is a no-op until overridden.
 
 ## EF — the effects mixin core
 

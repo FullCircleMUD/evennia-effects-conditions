@@ -35,8 +35,9 @@ a while, more than one thing can make it true, and it has to come off cleanly.
 The library holds the machinery — ref-counted condition flags, tracked anti-stacking effect
 records, countdown lifecycles you step from your own events, one library-driven wall clock, break
 and clear verbs. Your game declares the catalogue (two enums of frozen specs, named in settings and
-validated at boot) and answers two hooks: `at_effects_changed()` rebuilds whatever you mean by
-stats, and `effects_broadcast()` filters third-person messages if your game has concealment. The
+validated at boot) and answers up to three hooks: `at_effects_changed()` rebuilds whatever you mean
+by stats, `at_conditions_changed()` reacts to something becoming true of an actor or ceasing to be,
+and `effects_broadcast()` filters third-person messages if your game has concealment. The
 library never learns what a stat, a round or invisibility is.
 
 ```python

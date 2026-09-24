@@ -30,6 +30,17 @@ class ConditionsObjectStub(ConditionsMixin, DefaultObject):
             self.ndb.received = []
         return self.ndb.received
 
+    @property
+    def condition_calls(self):
+        """Every `at_conditions_changed()` call, as (key, is_held) pairs."""
+        if self.ndb.condition_calls is None:
+            self.ndb.condition_calls = []
+        return self.ndb.condition_calls
+
+    def at_conditions_changed(self, condition, is_held):
+        self.condition_calls.append((condition, is_held))
+        super().at_conditions_changed(condition, is_held)
+
     def msg(self, text=None, **kwargs):
         # msg_contents delivers text as a (message, kwargs) tuple; direct
         # msg() calls pass the plain string. Record the string either way.
@@ -91,6 +102,17 @@ class EffectsObjectStub(EffectsMixin, DefaultObject):
     def effects_broadcast(self, template):
         self.broadcasts.append(template)
 
+    @property
+    def condition_calls(self):
+        """Every `at_conditions_changed()` call, as (key, is_held) pairs."""
+        if self.ndb.condition_calls is None:
+            self.ndb.condition_calls = []
+        return self.ndb.condition_calls
+
+    def at_conditions_changed(self, condition, is_held):
+        self.condition_calls.append((condition, is_held))
+        super().at_conditions_changed(condition, is_held)
+
     def at_effects_changed(self):
         self.hook_calls.append({key: dict(rec) for key, rec in self.active_effects.items()})
         super().at_effects_changed()
@@ -105,3 +127,12 @@ class RaisingHookStub(EffectsObjectStub):
 
     def at_effects_changed(self):
         raise RuntimeError("consumer hook bug")
+
+
+class PlainConditionsStub(ConditionsMixin, DefaultObject):
+    """The conditions mixin with nothing overridden.
+
+    `CN-18`'s fixture. Every other stub here records `at_conditions_changed()`,
+    which makes it impossible to tell whether the mixin's own version is a
+    harmless no-op or whether a consumer is obliged to answer it.
+    """
