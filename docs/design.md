@@ -218,10 +218,14 @@ from runtime values and cannot live on a spec.
 
 ### Side effects on the spec, not in the library
 
-Three optional callables per `EffectSpec`, replacing the extracted system's hardcodes and
-registries: `on_apply(target, source, duration)` after a successful apply, `on_remove(target,
-record)` after a removal, and `on_tick` above. What they do is entirely the consumer's; the
-library only guarantees when they fire.
+Four optional callables per `EffectSpec`, replacing the extracted system's hardcodes and
+registries: `on_pre_apply_new(target, source, duration)` before a new application is recorded, a
+truthy answer refusing it; `on_apply(target, source, duration)` after a successful apply;
+`on_remove(target, record)` after a removal; and `on_tick` above. What they do is entirely the
+consumer's; the library only guarantees when they fire.
+
+`on_pre_apply_new` judges new applications only, not a reset or extend of an active record. A hook
+for readjustments is a separate field if one is ever needed.
 
 ## The record
 

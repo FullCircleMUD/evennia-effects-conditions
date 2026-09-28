@@ -123,6 +123,7 @@ case — see [design.md](design.md) § The catalogue.
 | CF-20 | An effect on the wall-clock lifecycle passes without declaring anything | `test_cf_20_the_wall_clock_lifecycle_needs_no_declaration` |
 | CF-21 | The refusal is logged to disk at ERROR carrying the same text as the exception — read back from the file, never mocked | `test_cf_21_the_refusal_is_logged_at_error_with_the_same_text` |
 | CF-22 | The accessors return the resolved classes and the declared lifecycles; lifecycles default to `()` | `test_cf_22_the_accessors_return_the_resolved_values` |
+| CF-23 | A member whose `on_pre_apply_new` is not callable is refused | `test_cf_23_a_non_callable_pre_apply_new_is_refused` |
 
 ## CN — the conditions mixin
 
@@ -191,8 +192,9 @@ The named-effect records from [design.md](design.md): apply with anti-stacking, 
 the queries, and the `at_effects_changed()` seam with its unwind guarantee. Lifecycle stepping is
 `LC`; the break and clear verbs are `BK`/`CL`.
 
-Apply sequences as: persist the record and the condition ref → `at_effects_changed()` (unwound on
-a raise) → messages → lifecycle start → `on_apply`. Removal reverses: drop the record → decrement
+Apply sequences as: `on_pre_apply_new` (a truthy answer refuses) → persist the record and the
+condition ref → `at_effects_changed()` (unwound on a raise) → messages → lifecycle start →
+`on_apply`. Removal reverses: drop the record → decrement
 the ref → end messages from the record → `at_effects_changed()` → `on_remove` last, handed the
 removed record. The hook fires only when the record carries an `effects` payload — a pure
 condition-flag effect changes nothing the consumer's rebuild could see.
@@ -254,6 +256,23 @@ caller cannot tell from a fresh apply.
 | EF-27 | Reset and extend on an inactive effect apply normally — a full apply with messages and `on_apply` | `test_ef_27_readjusting_an_inactive_effect_is_a_normal_apply` |
 | EF-28 | An `on_active` value that is none of the three is refused with `ValueError`, whether or not the effect is active | `test_ef_28_an_unknown_on_active_is_refused` |
 | EF-29 | Against a permanent record: reset gives it the applied duration, extend leaves it permanent; applying `duration=None` with reset makes a timed record permanent and stops its timer | `test_ef_29_readjusting_against_a_permanent_record` |
+| EF-30 | `on_pre_apply_new(target, source, duration)` runs before a new application is recorded, with the passed source and duration | `test_ef_30_pre_apply_new_runs_first_with_source_and_duration` |
+| EF-31 | A truthy answer refuses the application: no record, no condition ref, no `at_effects_changed()`, no messages, no lifecycle start, no `on_apply`, and the call returns False | `test_ef_31_a_truthy_answer_refuses_the_application` |
+| EF-32 | A falsy answer, `None` included, lets the application go ahead as normal | `test_ef_32_a_falsy_answer_lets_the_application_go_ahead` |
+| EF-33 | It does not run when the effect is already active — not on a refused second apply, not on reset, not on extend | `test_ef_33_it_does_not_run_when_the_effect_is_active` |
+| EF-34 | It runs for reset and extend against an inactive effect, which are new applications (EF-27) | `test_ef_34_it_runs_for_readjusting_an_inactive_effect` |
+
+**`on_pre_apply_new` judges new applications only.** A consumer whose effect must not take hold in
+some state — invisibility on someone mid-fight — refuses it here, before anything is recorded, and
+sends its own message if it wants one. A readjustment of an active effect is not a new application
+and is not judged; a hook for that is a separate field if one is ever needed.
+
+A truthy answer refuses, the same direction as `on_tick`, where truthy ends the record. EF-32 is the
+reason: a hook that sends its message and forgets to `return` answers `None`, and that has to let the
+effect through rather than silently block it every time.
+
+EF-33 and EF-34 pin where the call sits: after the already-active branch, so an active record never
+reaches it and an inactive one always does, whatever `on_active` says.
 
 ## LC — lifecycles
 

@@ -67,6 +67,7 @@ class EffectSpec:
     end_third: Optional[str] = None
     condition: Optional[str] = None
     lifecycle: Optional[str] = None
+    on_pre_apply_new: Optional[Callable] = None
     on_apply: Optional[Callable] = None
     on_remove: Optional[Callable] = None
     on_tick: Optional[Callable] = None

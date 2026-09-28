@@ -241,14 +241,17 @@ class EffectsMixin(ConditionsMixin):
                            condition=UNSET, duration=None, lifecycle=UNSET,
                            messages=None, extras=None, on_active=REFUSE,
                            max_duration=None):
-        """Apply a named effect. True if applied, False if already active.
+        """Apply a named effect. True if applied, False if already active or
+        refused by the spec's ``on_pre_apply_new``.
 
         ``condition`` and ``lifecycle`` default to the ``UNSET`` sentinel:
         an omitted argument means "whatever the spec says", an explicit
         ``None`` suppresses the spec's value, and an explicit value
         overrides it.
 
-        Sequencing: the record and condition ref persist first, then
+        Sequencing: for a new application, ``on_pre_apply_new`` runs first and
+        a truthy answer refuses it. Then the record and condition ref persist,
+        then
         ``at_effects_changed()`` runs — unwound completely if it raises —
         then messages, the lifecycle start, and ``on_apply`` last.
 
@@ -282,6 +285,11 @@ class EffectsMixin(ConditionsMixin):
             return self._readjust_effect(
                 key_str, standing, duration, on_active, max_duration, extras
             )
+
+        # A new application only — an active record never reaches here. A
+        # truthy answer refuses it before anything is stored.
+        if spec.on_pre_apply_new and spec.on_pre_apply_new(self, source, duration):
+            return False
 
         # Auto-fill from the spec where the caller did not decide.
         if condition is UNSET:

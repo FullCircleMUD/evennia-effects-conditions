@@ -393,6 +393,13 @@ class BootCheckTests(SimpleTestCase):
             delattr(settings, SETTING_LIFECYCLES)
             self.assertEqual(get_lifecycles(), ())
 
+    def test_cf_23_a_non_callable_pre_apply_new_is_refused(self):
+        """CF-23"""
+        message = self._refusal(
+            **{SETTING_EFFECT_ENUM: "tests.spec_stubs.BadPreApplyEffects"}
+        )
+        self.assertIn("on_pre_apply_new", message)
+
 
 class ConditionsMixinTests(DjangoTestCase):
     """The conditions mixin — ref counting, messaging, the seam (CN)."""
@@ -676,10 +683,11 @@ class EffectsMixinCoreTests(DjangoTestCase):
         from evennia.utils.create import create_object
 
         from tests.game_typeclasses import EffectsObjectStub
-        from tests.spec_stubs import CALLBACK_LOG
+        from tests.spec_stubs import CALLBACK_LOG, PRE_APPLY_RETURN
 
         self.holder = create_object(EffectsObjectStub, key="holder")
         CALLBACK_LOG.clear()
+        PRE_APPLY_RETURN["value"] = False
 
     def _effects(self):
         from tests.spec_stubs import GoodEffects
@@ -1089,6 +1097,93 @@ class EffectsMixinCoreTests(DjangoTestCase):
         self.assertIsNone(
             self.holder.get_effect_remaining_seconds("invisible")
         )
+
+    # ── on_pre_apply_new: judging a new application ────────────────── #
+
+    def _pre_apply_calls(self):
+        from tests.spec_stubs import CALLBACK_LOG
+
+        return [entry for entry in CALLBACK_LOG if entry[0] == "on_pre_apply_new"]
+
+    def test_ef_30_pre_apply_new_runs_first_with_source_and_duration(self):
+        """EF-30"""
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import EffectsObjectStub
+        from tests.spec_stubs import CALLBACK_LOG
+
+        source = create_object(EffectsObjectStub, key="source")
+        self.holder.apply_named_effect("gated", source=source, duration=4)
+        # The last field is whether the record existed when the hook ran.
+        self.assertEqual(
+            CALLBACK_LOG[0], ("on_pre_apply_new", self.holder, source, 4, False)
+        )
+        self.assertEqual(
+            [entry[0] for entry in CALLBACK_LOG], ["on_pre_apply_new", "on_apply"]
+        )
+
+    def test_ef_31_a_truthy_answer_refuses_the_application(self):
+        """EF-31"""
+        from evennia_effects_conditions.config import TIMER_SCRIPT_PREFIX
+
+        from tests.spec_stubs import CALLBACK_LOG, PRE_APPLY_RETURN
+
+        PRE_APPLY_RETURN["value"] = True
+        applied = self.holder.apply_named_effect(
+            "gated", duration=30, effects=[{"x": 1}]
+        )
+
+        self.assertFalse(applied)
+        self.assertFalse(self.holder.has_effect("gated"))
+        self.assertEqual(self.holder.get_condition_count("glowing"), 0)
+        self.assertEqual(self.holder.hook_calls, [])
+        self.assertEqual(self.holder.received, [])
+        self.assertEqual(self.holder.broadcasts, [])
+        self.assertFalse(self.holder.scripts.get(TIMER_SCRIPT_PREFIX + "gated"))
+        self.assertEqual(
+            [entry[0] for entry in CALLBACK_LOG], ["on_pre_apply_new"]
+        )
+
+    def test_ef_32_a_falsy_answer_lets_the_application_go_ahead(self):
+        """EF-32"""
+        from tests.spec_stubs import PRE_APPLY_RETURN
+
+        # None is the answer a hook gives when it forgets to return.
+        for answer in (None, False, 0):
+            with self.subTest(answer=answer):
+                PRE_APPLY_RETURN["value"] = answer
+                self.assertTrue(
+                    self.holder.apply_named_effect("gated", duration=30)
+                )
+                self.assertTrue(self.holder.has_effect("gated"))
+                self.holder.remove_named_effect("gated")
+
+    def test_ef_33_it_does_not_run_when_the_effect_is_active(self):
+        """EF-33"""
+        from tests.spec_stubs import CALLBACK_LOG
+
+        self.holder.apply_named_effect("gated", duration=30)
+        CALLBACK_LOG.clear()
+
+        for mode in ("refuse", "reset", "extend"):
+            with self.subTest(mode=mode):
+                self.holder.apply_named_effect(
+                    "gated", duration=30, on_active=mode
+                )
+                self.assertEqual(self._pre_apply_calls(), [])
+
+    def test_ef_34_it_runs_for_readjusting_an_inactive_effect(self):
+        """EF-34"""
+        from tests.spec_stubs import CALLBACK_LOG
+
+        for mode in ("reset", "extend"):
+            with self.subTest(mode=mode):
+                CALLBACK_LOG.clear()
+                self.holder.apply_named_effect(
+                    "gated", duration=30, on_active=mode
+                )
+                self.assertEqual(len(self._pre_apply_calls()), 1)
+                self.holder.remove_named_effect("gated")
 
 
 class LifecycleTests(DjangoTestCase):

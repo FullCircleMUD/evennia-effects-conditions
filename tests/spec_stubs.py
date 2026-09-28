@@ -46,6 +46,19 @@ class GoodConditions(Condition):
 CALLBACK_LOG = []
 
 
+#: What the recording pre-apply hook answers — tests flip "value" per case.
+PRE_APPLY_RETURN = {"value": False}
+
+
+def _recording_pre_apply_new(target, source, duration):
+    # Records whether the record already existed, so EF-30 can prove it runs
+    # before anything is stored.
+    CALLBACK_LOG.append(
+        ("on_pre_apply_new", target, source, duration, target.has_effect("gated"))
+    )
+    return PRE_APPLY_RETURN["value"]
+
+
 def _recording_on_apply(target, source, duration):
     CALLBACK_LOG.append(("on_apply", target, source, duration))
 
@@ -112,6 +125,17 @@ class GoodEffects(NamedEffect):
     )
     # Names an external companion script for clear_all_effects to stop (CL-04).
     SCRIPTED = EffectSpec("scripted", companion_script_key="companion_stub")
+    # Pre-apply-hooked, on the wall clock, granting a condition and messaged,
+    # so a refusal has everything to leave untouched (EF-30 to EF-34).
+    GATED = EffectSpec(
+        "gated",
+        condition="glowing",
+        lifecycle=WALL_CLOCK,
+        start_first="You are gated.",
+        start_third="{name} is gated.",
+        on_pre_apply_new=_recording_pre_apply_new,
+        on_apply=_recording_on_apply,
+    )
 
 
 class EmptyConditions(Condition):
@@ -138,6 +162,12 @@ class BadCallableEffects(NamedEffect):
     """CF-11 — a hook that is not callable."""
 
     BROKEN = EffectSpec("broken", on_apply="not-callable")
+
+
+class BadPreApplyEffects(NamedEffect):
+    """CF-23 — a pre-apply hook that is not callable."""
+
+    BROKEN = EffectSpec("broken", on_pre_apply_new="not-callable")
 
 
 class BadCompanionEffects(NamedEffect):
