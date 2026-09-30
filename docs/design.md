@@ -287,6 +287,14 @@ their content rides in `extras`, read by the consumer's tick hook.
 - **Companion scripts themselves.** DoT ticking, their damage, their timing all stay consumer-side;
   the spec only names the script key so `clear_all_effects()` can stop it.
 - **Tables.** All state is Attributes on the holder; no models, no alias, no `db_spec.py`.
+- **Instant changes.** A heal, a hit, a restored pool — a one-off change is an event, not a state,
+  and never goes through `apply_named_effect()`. The consumer applies it where it happens. An
+  effect's own hooks (`on_apply`, `on_tick`) may cause one, as a damage-over-time tick does, but the
+  change itself is not recorded.
+- **Other systems' "effects".** The word is used elsewhere — a potion's effects, an item's wear
+  effects, a terrain's environment effects. Those are that system's own data, not this library's
+  records or payloads. Where another system calls something an effect, examine what, if anything, it
+  actually passes to `apply_named_effect()` before treating any of it as part of this system.
 
 ## What is still open
 
