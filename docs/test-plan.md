@@ -230,9 +230,9 @@ The named-effect records from [design.md](design.md): apply with anti-stacking, 
 the queries, and the `at_effects_changed()` seam with its unwind guarantee. Lifecycle stepping is
 `LC`; the break and clear verbs are `BK`/`CL`.
 
-Apply sequences as: `on_pre_apply_new` (a truthy answer refuses) → persist the record and the
-condition ref → `at_effects_changed()` (unwound on a raise) → messages → lifecycle start →
-`on_apply`. Removal reverses: drop the record → decrement
+Apply sequences as: payload validation (a refusal raises) → `on_pre_apply_new` (a truthy answer
+refuses) → persist the record and the condition ref → `at_effects_changed()` (unwound on a raise) →
+messages → lifecycle start → `on_apply`. Removal reverses: drop the record → decrement
 the ref → end messages from the record → `at_effects_changed()` → `on_remove` last, handed the
 removed record. The hook fires only when the record carries an `effects` payload — a pure
 condition-flag effect changes nothing the consumer's rebuild could see.
@@ -270,7 +270,7 @@ caller cannot tell from a fresh apply.
 | EF-03 | An effect key the catalogue does not declare is refused with `ValueError` | `test_ef_03_an_undeclared_effect_key_is_refused` |
 | EF-04 | Omitted `condition`/`lifecycle` auto-fill from the spec; explicit `None` suppresses the spec's value; an explicit value overrides it | `test_ef_04_spec_auto_fill_explicit_none_and_explicit_override` |
 | EF-05 | An effect-granted condition is added silently — ref +1, active, none of the condition's own messages | `test_ef_05_an_effect_granted_condition_moves_silently` |
-| EF-06 | The `effects` payload is stored verbatim and never interpreted — arbitrary consumer shapes survive round-trip | `test_ef_06_the_payload_is_stored_verbatim` |
+| EF-06 | A valid `effects` payload is stored verbatim — the record holds the payloads as passed | `test_ef_06_the_payload_is_stored_verbatim` |
 | EF-07 | `at_effects_changed()` fires on apply and removal only when a payload exists, and at a moment the changed store is already readable | `test_ef_07_the_hook_fires_only_with_a_payload_and_after_the_store_changed` |
 | EF-08 | A raising `at_effects_changed()` unwinds the apply — record gone, condition ref gone, no messages, no `on_apply` — and the exception propagates untouched | `test_ef_08_a_raising_hook_unwinds_the_apply_and_propagates` |
 | EF-09 | Apply delivers the spec's start messages after the hook succeeds; an anti-stacked apply delivers nothing | `test_ef_09_apply_delivers_start_messages_and_anti_stacking_is_silent` |
@@ -311,6 +311,24 @@ effect through rather than silently block it every time.
 
 EF-33 and EF-34 pin where the call sits: after the already-active branch, so an active record never
 reaches it and an inactive one always does, whatever `on_active` says.
+
+### Payload validation
+
+Every payload is checked before anything else looks at the call. The helper resolves each payload's
+`type` through the payload enum and hands the payload to that member's `spec.validate()` — the
+fields, then `at_validate`. It stops at the first failure: a bad payload is a bug at one call site,
+and the traceback names it. Errors are not wrapped.
+
+Validation sits beside the `on_active` check, ahead of the already-active branch, so a malformed
+call is refused whatever state the effect is in.
+
+| ID | Case | Test function |
+|---|---|---|
+| EF-35 | A payload that is not a mapping, carries no `type`, or carries a `type` the payload enum does not declare is refused with `InvalidPayloadError` | `test_ef_35_an_unresolvable_payload_is_refused` |
+| EF-36 | A payload of a declared type is checked against that member's spec — a missing field is refused with `InvalidPayloadError` | `test_ef_36_a_declared_payload_is_checked_against_its_spec` |
+| EF-37 | A refusal stops the call before anything happens — no `on_pre_apply_new`, no record, no condition ref, no `at_effects_changed()`, no messages, no timer, no `on_apply` — and the error propagates; the same holds for an exception raised by `at_validate` | `test_ef_37_a_refusal_stops_the_call_before_anything_happens` |
+| EF-38 | One invalid payload among valid ones refuses the whole application | `test_ef_38_one_invalid_payload_refuses_the_whole_application` |
+| EF-39 | Validation runs whether or not the effect is already active — a bad payload is refused under refuse, reset and extend | `test_ef_39_validation_runs_whether_or_not_the_effect_is_active` |
 
 ## LC — lifecycles
 

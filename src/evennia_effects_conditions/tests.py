@@ -920,7 +920,7 @@ class EffectsMixinCoreTests(DjangoTestCase):
         self.holder.apply_named_effect("blessed", duration=3)
         self.assertFalse(
             self.holder.apply_named_effect(
-                "blessed", duration=99, effects=[{"x": 1}]
+                "blessed", duration=99, effects=[{"type": "size_shift", "value": 1}]
             )
         )
         record = self.holder.get_named_effect("blessed")
@@ -957,7 +957,10 @@ class EffectsMixinCoreTests(DjangoTestCase):
 
     def test_ef_06_the_payload_is_stored_verbatim(self):
         """EF-06"""
-        payload = [{"weird": ["shape", 1]}, {"type": "custom", "n": 2.5}]
+        payload = [
+            {"type": "stat_bonus", "stat": "strength", "value": 2},
+            {"type": "size_shift", "value": -1},
+        ]
         self.holder.apply_named_effect("trapped", duration=2, effects=payload)
         self.assertEqual(
             list(self.holder.get_named_effect("trapped")["effects"]), payload
@@ -967,7 +970,7 @@ class EffectsMixinCoreTests(DjangoTestCase):
 
     def test_ef_07_the_hook_fires_only_with_a_payload_and_after_the_store_changed(self):
         """EF-07"""
-        self.holder.apply_named_effect("trapped", duration=2, effects=[{"x": 1}])
+        self.holder.apply_named_effect("trapped", duration=2, effects=[{"type": "size_shift", "value": 1}])
         self.assertEqual(len(self.holder.hook_calls), 1)
         self.assertIn("trapped", self.holder.hook_calls[0])
         # No payload — nothing the consumer's rebuild could see changed.
@@ -987,7 +990,7 @@ class EffectsMixinCoreTests(DjangoTestCase):
         holder = self._raising_holder()
         with self.assertRaises(RuntimeError):
             holder.apply_named_effect(
-                "callbacked", effects=[{"x": 1}], condition="glowing",
+                "callbacked", effects=[{"type": "size_shift", "value": 1}], condition="glowing",
             )
         self.assertFalse(holder.has_effect("callbacked"))
         self.assertIsNone(holder.get_named_effect("callbacked"))
@@ -1114,7 +1117,7 @@ class EffectsMixinCoreTests(DjangoTestCase):
     def test_ef_17_two_effects_coexist_and_one_removal_leaves_the_other(self):
         """EF-17"""
         self.holder.apply_named_effect("blessed", duration=1)
-        self.holder.apply_named_effect("trapped", duration=2, effects=[{"x": 1}])
+        self.holder.apply_named_effect("trapped", duration=2, effects=[{"type": "size_shift", "value": 1}])
         self.holder.remove_named_effect("trapped")
         self.assertTrue(self.holder.has_effect("blessed"))
         self.assertTrue(self.holder.has_condition("glowing"))
@@ -1325,7 +1328,7 @@ class EffectsMixinCoreTests(DjangoTestCase):
 
         PRE_APPLY_RETURN["value"] = True
         applied = self.holder.apply_named_effect(
-            "gated", duration=30, effects=[{"x": 1}]
+            "gated", duration=30, effects=[{"type": "size_shift", "value": 1}]
         )
 
         self.assertFalse(applied)
@@ -1379,6 +1382,89 @@ class EffectsMixinCoreTests(DjangoTestCase):
                 )
                 self.assertEqual(len(self._pre_apply_calls()), 1)
                 self.holder.remove_named_effect("gated")
+
+    # ── payload validation ─────────────────────────────────────────── #
+
+    def test_ef_35_an_unresolvable_payload_is_refused(self):
+        """EF-35"""
+        for payload in (
+            None,
+            "size_shift",
+            {"value": 1},
+            {"type": "no_such_type", "value": 1},
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(InvalidPayloadError):
+                    self.holder.apply_named_effect(
+                        "trapped", duration=2, effects=[payload]
+                    )
+                self.assertFalse(self.holder.has_effect("trapped"))
+
+    def test_ef_36_a_declared_payload_is_checked_against_its_spec(self):
+        """EF-36"""
+        with self.assertRaises(InvalidPayloadError):
+            self.holder.apply_named_effect(
+                "trapped",
+                duration=2,
+                effects=[{"type": "stat_bonus", "stat": "strength"}],
+            )
+        self.assertFalse(self.holder.has_effect("trapped"))
+
+    def test_ef_37_a_refusal_stops_the_call_before_anything_happens(self):
+        """EF-37"""
+        from evennia_effects_conditions.config import TIMER_SCRIPT_PREFIX
+
+        from tests.spec_stubs import CALLBACK_LOG, StubRefusal
+
+        for payload, raised in (
+            ({"type": "size_shift"}, InvalidPayloadError),
+            ({"type": "checked", "value": -1}, StubRefusal),
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(raised):
+                    self.holder.apply_named_effect(
+                        "gated", duration=30, effects=[payload]
+                    )
+                self.assertEqual(CALLBACK_LOG, [])
+                self.assertFalse(self.holder.has_effect("gated"))
+                self.assertEqual(self.holder.get_condition_count("glowing"), 0)
+                self.assertEqual(self.holder.hook_calls, [])
+                self.assertEqual(self.holder.received, [])
+                self.assertEqual(self.holder.broadcasts, [])
+                self.assertFalse(
+                    self.holder.scripts.get(TIMER_SCRIPT_PREFIX + "gated")
+                )
+
+    def test_ef_38_one_invalid_payload_refuses_the_whole_application(self):
+        """EF-38"""
+        with self.assertRaises(InvalidPayloadError):
+            self.holder.apply_named_effect(
+                "trapped",
+                duration=2,
+                effects=[
+                    {"type": "size_shift", "value": 1},
+                    {"type": "size_shift", "valeu": 1},
+                ],
+            )
+        self.assertFalse(self.holder.has_effect("trapped"))
+        self.assertEqual(self.holder.hook_calls, [])
+
+    def test_ef_39_validation_runs_whether_or_not_the_effect_is_active(self):
+        """EF-39"""
+        self.holder.apply_named_effect("trapped", duration=2)
+
+        for mode in ("refuse", "reset", "extend"):
+            with self.subTest(mode=mode):
+                with self.assertRaises(InvalidPayloadError):
+                    self.holder.apply_named_effect(
+                        "trapped",
+                        duration=9,
+                        on_active=mode,
+                        effects=[{"type": "no_such_type", "value": 1}],
+                    )
+                self.assertEqual(
+                    self.holder.get_named_effect("trapped")["duration"], 2
+                )
 
 
 class LifecycleTests(DjangoTestCase):
@@ -1597,7 +1683,7 @@ class BreakVerbTests(DjangoTestCase):
         """BK-04"""
         from tests.spec_stubs import CALLBACK_LOG
 
-        self.holder.apply_named_effect("trapped", duration=2, effects=[{"x": 1}])
+        self.holder.apply_named_effect("trapped", duration=2, effects=[{"type": "size_shift", "value": 1}])
         hook_count = len(self.holder.hook_calls)
         self.holder.break_effect("trapped")
         self.assertEqual(len(self.holder.hook_calls), hook_count + 1)
@@ -1679,7 +1765,7 @@ class ClearAllTests(DjangoTestCase):
         # One of every lifecycle shape, plus a bare condition grant.
         self.holder.apply_named_effect("stunned", duration=2)
         self.holder.apply_named_effect(
-            "blessed", duration=None, effects=[{"x": 1}]
+            "blessed", duration=None, effects=[{"type": "size_shift", "value": 1}]
         )
         self.holder.apply_named_effect("invisible", duration=300)
         self.holder.apply_named_effect("poisoned", duration=5)

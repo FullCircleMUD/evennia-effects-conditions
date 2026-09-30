@@ -11,6 +11,7 @@ records and their lifecycle — see ``docs/design.md``.
 from evennia.typeclasses.attributes import AttributeProperty
 
 import time
+from collections import abc
 
 from evennia_effects_conditions.config import (
     EXTEND,
@@ -21,6 +22,7 @@ from evennia_effects_conditions.config import (
     UNSET,
     WALL_CLOCK,
 )
+from evennia_effects_conditions.payloads import InvalidPayloadError
 
 
 class ConditionsMixin:
@@ -235,6 +237,44 @@ class EffectsMixin(ConditionsMixin):
             ) from None
         return member.value, member.spec
 
+    def _validate_payloads(self, effects):
+        """Check every payload against the spec its ``type`` names.
+
+        Finds each payload's spec in the payload enum and hands the payload
+        to ``spec.validate()`` — the fields, then ``at_validate``. Stops at
+        the first failure; nothing is wrapped, so ``at_validate``'s own error
+        arrives as the consumer raised it.
+
+        Raises:
+            InvalidPayloadError: a payload that is not a mapping, carries no
+                ``type``, names a type the enum does not declare, or does not
+                match its spec.
+        """
+        if not effects:
+            return
+
+        from evennia_effects_conditions.config import get_payload_enum
+
+        payload_enum = get_payload_enum()
+        for payload in effects:
+            if not isinstance(payload, abc.Mapping):
+                raise InvalidPayloadError(
+                    f"payload {payload!r} is not a mapping"
+                )
+            if "type" not in payload:
+                raise InvalidPayloadError(
+                    f"payload {payload!r} carries no type"
+                )
+            try:
+                member = payload_enum(payload["type"])
+            except ValueError:
+                raise InvalidPayloadError(
+                    f"payload {payload!r} names type {payload['type']!r}, "
+                    f"which {payload_enum.__module__}."
+                    f"{payload_enum.__qualname__} does not declare"
+                ) from None
+            member.spec.validate(payload)
+
     # ── apply and remove ───────────────────────────────────────────── #
 
     def apply_named_effect(self, key, source=None, effects=None,
@@ -249,16 +289,18 @@ class EffectsMixin(ConditionsMixin):
         ``None`` suppresses the spec's value, and an explicit value
         overrides it.
 
-        Sequencing: for a new application, ``on_pre_apply_new`` runs first and
-        a truthy answer refuses it. Then the record and condition ref persist,
-        then
+        Sequencing: every payload is validated first, whether or not the
+        effect is active, and a refusal raises before anything else happens.
+        For a new application, ``on_pre_apply_new`` runs next and a truthy
+        answer refuses it. Then the record and condition ref persist, then
         ``at_effects_changed()`` runs — unwound completely if it raises —
         then messages, the lifecycle start, and ``on_apply`` last.
 
         Args:
             key: catalogue member or key string.
             source: whatever caused this; handed to ``on_apply``, not stored.
-            effects: opaque payload list, stored verbatim, never interpreted.
+            effects: payload list, each checked against the spec its
+                ``type`` names in the payload enum, then stored verbatim.
             duration: int, or None for no expiry of its own.
             messages: per-application overrides, merged over the spec's.
             extras: per-application values, merged over the spec's.
@@ -277,6 +319,10 @@ class EffectsMixin(ConditionsMixin):
                 f"on_active must be one of {ON_ACTIVE_CHOICES}, "
                 f"got {on_active!r}."
             )
+
+        # Ahead of the already-active branch: a bad payload is a bug in the
+        # call, refused whatever state the effect is in.
+        self._validate_payloads(effects)
 
         standing = (self.active_effects or {}).get(key_str)
         if standing is not None:

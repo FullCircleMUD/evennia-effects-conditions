@@ -190,11 +190,22 @@ class UndeclaredLifecycleEffects(NamedEffect):
     BROKEN = EffectSpec("broken", lifecycle="no_such_lifecycle")
 
 
+class StubRefusal(Exception):
+    """What the checked payload's at_validate raises — a consumer's own error."""
+
+
+def _refuse_negative(payload):
+    if payload["value"] < 0:
+        raise StubRefusal(f"negative value in {payload!r}")
+
+
 class GoodPayloads(PayloadType):
     """A small valid payload catalogue."""
 
     STAT_BONUS = PayloadSpec("stat_bonus", fields=("stat", "value"))
     SIZE_SHIFT = PayloadSpec("size_shift", fields=("value",))
+    # A consumer value check that refuses by raising (EF-37).
+    CHECKED = PayloadSpec("checked", fields=("value",), at_validate=_refuse_negative)
 
 
 class EmptyPayloads(PayloadType):
