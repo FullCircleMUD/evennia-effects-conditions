@@ -15,6 +15,8 @@ from evennia_effects_conditions.specs import (
     ConditionSpec,
     EffectSpec,
     NamedEffect,
+    PayloadSpec,
+    PayloadType,
 )
 
 #: What the suite's EFFECTS_LIFECYCLES declares (mirrored in test_settings.py).
@@ -186,6 +188,41 @@ class UndeclaredLifecycleEffects(NamedEffect):
     """CF-19 — an effect naming a lifecycle the settings do not declare."""
 
     BROKEN = EffectSpec("broken", lifecycle="no_such_lifecycle")
+
+
+class GoodPayloads(PayloadType):
+    """A small valid payload catalogue."""
+
+    STAT_BONUS = PayloadSpec("stat_bonus", fields=("stat", "value"))
+    SIZE_SHIFT = PayloadSpec("size_shift", fields=("value",))
+
+
+class EmptyPayloads(PayloadType):
+    """CF-28 — a game with no payloads declares an empty catalogue."""
+
+
+class BadFieldEntryPayloads(PayloadType):
+    """CF-26 — a field entry that is not a non-empty string."""
+
+    BROKEN = PayloadSpec("broken", fields=("value", 3))
+
+
+class DuplicateFieldPayloads(PayloadType):
+    """CF-26 — a field declared twice."""
+
+    BROKEN = PayloadSpec("broken", fields=("value", "value"))
+
+
+class TypeFieldPayloads(PayloadType):
+    """CF-26 — `type` declared as a field, which every payload already carries."""
+
+    BROKEN = PayloadSpec("broken", fields=("type", "value"))
+
+
+class BadAtValidatePayloads(PayloadType):
+    """CF-27 — an at_validate that is not callable."""
+
+    BROKEN = PayloadSpec("broken", fields=("value",), at_validate="not-callable")
 
 
 #: CF-07 — a dotted path can resolve to something that is not a class.

@@ -105,13 +105,15 @@ consumer; the library checks shape.
 | SP-19 | `validate()` refuses a payload carrying an undeclared field, naming the field | `test_sp_19_validate_refuses_an_undeclared_field_and_names_it` |
 | SP-20 | `at_validate` is called with the payload only once the shape check passes, and not at all when it fails | `test_sp_20_at_validate_runs_only_after_the_shape_check_passes` |
 | SP-21 | An exception raised by `at_validate` reaches the caller unchanged | `test_sp_21_an_at_validate_exception_reaches_the_caller_unchanged` |
+| SP-22 | A `PayloadSpec` whose `fields` is a bare string is refused at declaration — `("value")` without its comma, which the snapshot would otherwise read a letter at a time | `test_sp_22_a_bare_string_fields_is_refused_at_declaration` |
 
 ## CF — the settings and the boot check
 
-Three settings, per [design.md](design.md) § The catalogue: `EFFECTS_CONDITION_ENUM` and
-`EFFECTS_EFFECT_ENUM` name the consumer's two enum subclasses and are required — neither has a safe
-default, so both are checked in `check_settings()`, called from `AppConfig.ready()`, and the game
-does not start without them. `EFFECTS_LIFECYCLES` names the countdown lifecycles and defaults to
+Four settings, per [design.md](design.md) § The catalogue: `EFFECTS_CONDITION_ENUM`,
+`EFFECTS_EFFECT_ENUM` and `EFFECTS_PAYLOAD_ENUM` name the consumer's three enum subclasses and are
+required — none has a safe default, so all three are checked in `check_settings()`, called from
+`AppConfig.ready()`, and the game does not start without them. A game with no payloads declares an
+empty `PayloadType` subclass. `EFFECTS_LIFECYCLES` names the countdown lifecycles and defaults to
 `()`; absence is never a problem, but a declared value is still validated, and the cross-checks
 read it either way.
 
@@ -154,6 +156,12 @@ case — see [design.md](design.md) § The catalogue.
 | CF-21 | The refusal is logged to disk at ERROR carrying the same text as the exception — read back from the file, never mocked | `test_cf_21_the_refusal_is_logged_at_error_with_the_same_text` |
 | CF-22 | The accessors return the resolved classes and the declared lifecycles; lifecycles default to `()` | `test_cf_22_the_accessors_return_the_resolved_values` |
 | CF-23 | A member whose `on_pre_apply_new` is not callable is refused | `test_cf_23_a_non_callable_pre_apply_new_is_refused` |
+| CF-24 | `EFFECTS_PAYLOAD_ENUM` unset is refused, the problem naming the setting | `test_cf_24_payload_enum_unset_is_refused_naming_the_setting` |
+| CF-25 | `EFFECTS_PAYLOAD_ENUM` naming a class that is not a `PayloadType` subclass is refused — the setting rides the same resolution as the other two, which CF-05 to CF-09 cover | `test_cf_25_a_payload_enum_not_subclassing_payload_type_is_refused` |
+| CF-26 | A payload member whose `fields` holds an entry that is not a non-empty string, a duplicate, or `type` is refused, naming the member | `test_cf_26_a_bad_payload_field_entry_is_refused_naming_the_member` |
+| CF-27 | A payload member whose `at_validate` is neither callable nor `None` is refused, naming the member | `test_cf_27_a_non_callable_at_validate_is_refused` |
+| CF-28 | An empty payload enum is allowed — a game with no payloads declares one | `test_cf_28_an_empty_payload_enum_is_allowed` |
+| CF-29 | `get_payload_enum()` returns the resolved class | `test_cf_29_the_payload_accessor_returns_the_resolved_class` |
 
 ## CN — the conditions mixin
 

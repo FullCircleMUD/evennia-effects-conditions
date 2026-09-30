@@ -2,9 +2,9 @@
 """The demo game's effects catalogue.
 
 **None of this is the library's.** Every condition, effect, message and
-lifecycle name here is this game's own vocabulary — the library ships no
-members, and this module is what EFFECTS_CONDITION_ENUM / EFFECTS_EFFECT_ENUM
-point at. Living under world/ is one way of keeping it tidy and not something
+lifecycle and payload name here is this game's own vocabulary — the library
+ships no members, and this module is what EFFECTS_CONDITION_ENUM,
+EFFECTS_EFFECT_ENUM and EFFECTS_PAYLOAD_ENUM point at. Living under world/ is one way of keeping it tidy and not something
 the library asks for.
 """
 
@@ -14,6 +14,8 @@ from evennia_effects_conditions.specs import (
     ConditionSpec,
     EffectSpec,
     NamedEffect,
+    PayloadSpec,
+    PayloadType,
 )
 
 
@@ -47,3 +49,9 @@ class DemoEffects(NamedEffect):
         end_first="The blessing wears off.",
         end_third="The blessing on {name} wears off.",
     )
+
+
+class DemoPayloads(PayloadType):
+    # What an effect can carry for the game to act on. The library checks a
+    # payload's shape against this; what the numbers mean is the game's.
+    STAT_BONUS = PayloadSpec("stat_bonus", fields=("stat", "value"))

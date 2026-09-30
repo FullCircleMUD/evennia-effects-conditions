@@ -95,6 +95,7 @@ INSTALLED_APPS += ["evennia_effects_conditions"]
 
 EFFECTS_CONDITION_ENUM = "world.effects.DemoConditions"
 EFFECTS_EFFECT_ENUM = "world.effects.DemoEffects"
+EFFECTS_PAYLOAD_ENUM = "world.effects.DemoPayloads"
 EFFECTS_LIFECYCLES = ("combat_rounds",)
 
 

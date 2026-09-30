@@ -35,6 +35,7 @@ INSTALLED_APPS = list(INSTALLED_APPS) + [  # noqa: F405
 # or delattr inside an override block for true absence).
 EFFECTS_CONDITION_ENUM = "tests.spec_stubs.GoodConditions"
 EFFECTS_EFFECT_ENUM = "tests.spec_stubs.GoodEffects"
+EFFECTS_PAYLOAD_ENUM = "tests.spec_stubs.GoodPayloads"
 EFFECTS_LIFECYCLES = ("combat_rounds", "fair_dances")
 
 # One database. The library owns no tables, so there is nothing to route and

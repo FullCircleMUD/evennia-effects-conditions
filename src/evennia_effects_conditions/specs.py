@@ -105,6 +105,14 @@ class PayloadSpec:
     at_validate: Optional[Callable] = None
 
     def __post_init__(self):
+        # A bare string is refused here rather than at boot: the snapshot
+        # below would read it a letter at a time, and once it has, nothing
+        # can tell ("value") from ("v", "a", "l", "u", "e").
+        if isinstance(self.fields, str):
+            raise TypeError(
+                f"PayloadSpec {self.key!r}: fields is the bare string "
+                f"{self.fields!r} — declare a tuple, e.g. ({self.fields!r},)"
+            )
         # Snapshotted so later mutation of what the consumer passed cannot
         # change the spec. object.__setattr__ because the dataclass is frozen.
         object.__setattr__(self, "fields", tuple(self.fields))

@@ -5,7 +5,7 @@ library's logic in isolation; this is where it meets a real database, a real boo
 objects.
 
 `demo/` is a stock gamedir wired as a real consumer: its own catalogue in `world/effects.py`, the
-three `EFFECTS_` settings, and `EffectsMixin` on its Character. Validated live — see
+four `EFFECTS_` settings, and `EffectsMixin` on its Character. Validated live — see
 [docs/progress.md](../docs/progress.md) — a wall-clock effect expiring on its own timer, a countdown
 stepped by `advance_effects()`, and a broken setting refusing the boot with the refusal in
 `effects-conditions.log`.
@@ -59,6 +59,6 @@ Two blocks, both in `demo/server/conf/settings.py`:
   uses to daemonise — so the child deadlocks on its first SQLite call, silently. `sqlean.py` ships a
   statically-linked SQLite, so Apple's is never loaded. It has to run before anything opens a
   database, which is why it sits where it does.
-- **The library block** — `INSTALLED_APPS += ["evennia_effects_conditions"]` plus the two required
+- **The library block** — `INSTALLED_APPS += ["evennia_effects_conditions"]` plus the three required
   catalogue settings and one declared countdown lifecycle, pointing at `world/effects.py`. That
   module is the demo game's own vocabulary, none of it the library's.

@@ -20,11 +20,13 @@ from evennia_effects_conditions.config import (
     SETTING_CONDITION_ENUM,
     SETTING_EFFECT_ENUM,
     SETTING_LIFECYCLES,
+    SETTING_PAYLOAD_ENUM,
     WALL_CLOCK,
     check_settings,
     get_condition_enum,
     get_effect_enum,
     get_lifecycles,
+    get_payload_enum,
 )
 from evennia_effects_conditions.payloads import (
     InvalidPayloadError,
@@ -290,6 +292,11 @@ class SpecTests(TestCase):
 
         self.assertIs(ctx.exception, raised)
 
+    def test_sp_22_a_bare_string_fields_is_refused_at_declaration(self):
+        """SP-22"""
+        with self.assertRaises(TypeError):
+            PayloadSpec("size_shift", fields=("value"))
+
 
 class BootCheckTests(SimpleTestCase):
     """The settings and the boot check (CF)."""
@@ -538,6 +545,55 @@ class BootCheckTests(SimpleTestCase):
             **{SETTING_EFFECT_ENUM: "tests.spec_stubs.BadPreApplyEffects"}
         )
         self.assertIn("on_pre_apply_new", message)
+
+    # ── the payload catalogue ──────────────────────────────────────── #
+
+    def test_cf_24_payload_enum_unset_is_refused_naming_the_setting(self):
+        """CF-24"""
+        message = self._refusal(**{SETTING_PAYLOAD_ENUM: None})
+        self.assertIn(SETTING_PAYLOAD_ENUM, message)
+
+    def test_cf_25_a_payload_enum_not_subclassing_payload_type_is_refused(self):
+        """CF-25"""
+        message = self._refusal(
+            **{SETTING_PAYLOAD_ENUM: "tests.spec_stubs.GoodEffects"}
+        )
+        self.assertIn(SETTING_PAYLOAD_ENUM, message)
+
+    def test_cf_26_a_bad_payload_field_entry_is_refused_naming_the_member(self):
+        """CF-26"""
+        for stub in (
+            "BadFieldEntryPayloads",
+            "DuplicateFieldPayloads",
+            "TypeFieldPayloads",
+        ):
+            with self.subTest(stub=stub):
+                message = self._refusal(
+                    **{SETTING_PAYLOAD_ENUM: f"tests.spec_stubs.{stub}"}
+                )
+                self.assertIn("broken", message)
+                self.assertIn("fields", message)
+
+    def test_cf_27_a_non_callable_at_validate_is_refused(self):
+        """CF-27"""
+        message = self._refusal(
+            **{SETTING_PAYLOAD_ENUM: "tests.spec_stubs.BadAtValidatePayloads"}
+        )
+        self.assertIn("broken", message)
+        self.assertIn("at_validate", message)
+
+    def test_cf_28_an_empty_payload_enum_is_allowed(self):
+        """CF-28"""
+        with override_settings(
+            **{SETTING_PAYLOAD_ENUM: "tests.spec_stubs.EmptyPayloads"}
+        ):
+            check_settings()
+
+    def test_cf_29_the_payload_accessor_returns_the_resolved_class(self):
+        """CF-29"""
+        from tests.spec_stubs import GoodPayloads
+
+        self.assertIs(get_payload_enum(), GoodPayloads)
 
 
 class ConditionsMixinTests(DjangoTestCase):

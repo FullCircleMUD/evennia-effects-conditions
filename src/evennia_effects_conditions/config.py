@@ -1,22 +1,24 @@
 # SPDX-License-Identifier: BSD-3-Clause
 """The settings this library reads, and the boot check that refuses bad ones.
 
-Two settings name the consumer's catalogue enums — see
+Three settings name the consumer's catalogue enums — see
 ``library-standards.md`` § Consumer-authored config, and ``specs.py`` for what
-a catalogue is. Neither has a safe default, so both are validated once at boot
-and the instance does not start without them::
+a catalogue is. None has a safe default, so all three are validated once at
+boot and the instance does not start without them. A game with no payloads
+declares an empty ``PayloadType`` subclass::
 
     EFFECTS_CONDITION_ENUM = "world.effects.MyConditions"
     EFFECTS_EFFECT_ENUM = "world.effects.MyEffects"
+    EFFECTS_PAYLOAD_ENUM = "world.effects.MyPayloads"
 
-The third names the countdown lifecycles the game will step — see
+The fourth names the countdown lifecycles the game will step — see
 ``docs/design.md`` § Two clocks and a blank. It defaults to none declared:
 absence is never a problem, but a declared value is still validated, and the
 cross-checks read it either way::
 
     EFFECTS_LIFECYCLES = ("combat_rounds",)
 
-Every problem across all three is collected and raised together: a consumer
+Every problem across all four is collected and raised together: a consumer
 installing this has more than one thing to get right, and stopping at the
 first turns that into fix-restart-fix-restart, once per mistake. A check
 whose ground itself failed — a member audit on an enum that did not load, a
@@ -28,10 +30,11 @@ and not as itself plus the noise it would cause downstream.
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
 
-from evennia_effects_conditions.specs import Condition, NamedEffect
+from evennia_effects_conditions.specs import Condition, NamedEffect, PayloadType
 
 SETTING_CONDITION_ENUM = "EFFECTS_CONDITION_ENUM"
 SETTING_EFFECT_ENUM = "EFFECTS_EFFECT_ENUM"
+SETTING_PAYLOAD_ENUM = "EFFECTS_PAYLOAD_ENUM"
 SETTING_LIFECYCLES = "EFFECTS_LIFECYCLES"
 
 #: What an undeclared EFFECTS_LIFECYCLES means: no countdown lifecycles. A
@@ -97,6 +100,13 @@ def get_effect_enum():
     return import_string(getattr(settings, SETTING_EFFECT_ENUM))
 
 
+def get_payload_enum():
+    """The consumer's PayloadType subclass. Checked at boot."""
+    from django.conf import settings
+
+    return import_string(getattr(settings, SETTING_PAYLOAD_ENUM))
+
+
 def get_lifecycles():
     """The declared countdown lifecycle names, as a tuple. May be empty."""
     from django.conf import settings
@@ -108,7 +118,7 @@ def check_settings():
     """Refuse to start when the declared catalogue is unusable.
 
     Called from ``AppConfig.ready()``. Collects every problem across all
-    three settings, logs the refusal at ERROR, and raises once.
+    four settings, logs the refusal at ERROR, and raises once.
     """
     problems = []
     cause = None
@@ -128,6 +138,14 @@ def check_settings():
     problems.extend(resolve_problems)
     cause = cause or resolve_cause
 
+    payload_enum, resolve_problems, resolve_cause = _resolve_enum(
+        SETTING_PAYLOAD_ENUM, PayloadType
+    )
+    problems.extend(resolve_problems)
+    cause = cause or resolve_cause
+
+    if payload_enum is not None:
+        problems.extend(_payload_member_problems(payload_enum))
     if condition_enum is not None:
         problems.extend(_condition_member_problems(condition_enum))
     if effect_enum is not None:
@@ -247,6 +265,40 @@ def _condition_member_problems(enum_cls):
         problems.extend(
             _message_field_problems(SETTING_CONDITION_ENUM, member.spec)
         )
+    return problems
+
+
+def _payload_member_problems(enum_cls):
+    """The per-member audit for the payload catalogue.
+
+    ``fields`` entries are held to non-empty, unique strings, and ``type`` is
+    not one of them — every payload carries it already, and declared as a
+    field it would make every payload of that type fail validation.
+    """
+    problems = []
+    for member in enum_cls:
+        spec = member.spec
+        bad = [name for name in spec.fields if not isinstance(name, str) or not name]
+        if bad:
+            problems.append(
+                f"{SETTING_PAYLOAD_ENUM} member {spec.key!r}: fields entries "
+                f"must be non-empty strings; got {bad!r}."
+            )
+        if len(set(spec.fields)) != len(spec.fields):
+            problems.append(
+                f"{SETTING_PAYLOAD_ENUM} member {spec.key!r}: fields declares "
+                f"a name twice."
+            )
+        if "type" in spec.fields:
+            problems.append(
+                f"{SETTING_PAYLOAD_ENUM} member {spec.key!r}: fields declares "
+                f"'type', which every payload carries already — leave it out."
+            )
+        if spec.at_validate is not None and not callable(spec.at_validate):
+            problems.append(
+                f"{SETTING_PAYLOAD_ENUM} member {spec.key!r}: at_validate "
+                f"must be callable or None, got {spec.at_validate!r}."
+            )
     return problems
 
 
