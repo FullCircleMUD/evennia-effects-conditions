@@ -28,6 +28,7 @@ Behaviour is agreed here first, before any test or code — see
 | `BK` | The break verbs — forced, silent removal on a trigger the consumer owns |
 | `CL` | `clear_all_effects()` — the silent full strip for death-shaped moments |
 | `PB` | `bucket_effects()` — grouping a store's payloads by their type |
+| `GB` | `get_effect_buckets()` and `at_post_bucket_effects()` — a holder's payloads by type, and the seam for sources outside the store |
 
 ## Fixtures
 
@@ -35,7 +36,7 @@ Behaviour is agreed here first, before any test or code — see
 |---|---|
 | `tests/spec_stubs.py` | The consumer-shaped enums the suite's settings point at. Imports nothing but `evennia_effects_conditions.specs`, because `ready()` resolves it during `django.setup()`. Grows variant stubs as cases need them |
 | `tests/raising_spec_module.py` | A consumer module that raises on import — the negative fixture for `CF-06`, kept in its own file so importing the good stubs never trips it |
-| `tests/game_typeclasses.py` | The mixins on plain `DefaultObject`s — deliberately not a character, pinning that the library asks nothing of its holder's class. The stubs record their own `msg()`, `effects_broadcast()` and `at_effects_changed()` calls so cases read what arrived; `RaisingHookStub` is the EF-08 unwind fixture. Imported inside test bodies, never named in settings |
+| `tests/game_typeclasses.py` | The mixins on plain `DefaultObject`s — deliberately not a character, pinning that the library asks nothing of its holder's class. The stubs record their own `msg()`, `effects_broadcast()` and `at_effects_changed()` calls so cases read what arrived; `RaisingHookStub` is the EF-08 unwind fixture; `ExtraSourceStub` overrides `at_post_bucket_effects()` to record what it was handed and add one payload of its own, for `GB-03` and `GB-04`. Imported inside test bodies, never named in settings |
 
 The SP cases use no fixtures — they declare consumer-shaped enums inline, pure stdlib.
 
@@ -484,6 +485,36 @@ others are still reading.
 PB-10 records that nothing is copied. A caller that mutates a payload it was handed is mutating the
 stored record, and that is the caller's business to avoid — copying every payload on every rebuild to
 defend against it would cost more than it saves.
+
+## GB — a holder's buckets
+
+`get_effect_buckets()` on `EffectsMixin` returns the payloads acting on the holder, grouped by type:
+`bucket_effects(self.active_effects)`, passed through `at_post_bucket_effects(buckets)` and returned
+as that hook gives it back.
+
+```python
+def at_post_bucket_effects(self, buckets):
+    buckets = super().at_post_bucket_effects(buckets)
+    # add payloads from a source the store does not hold
+    return buckets
+```
+
+**The hook is the seam for payloads the store does not hold** — worn gear, an aura, the ground under
+the holder. The library does not know what any such source is; it hands the buckets over and returns
+what comes back. By default the hook returns them unchanged.
+
+The library does not call `get_effect_buckets()` itself. A consumer's `at_effects_changed()` override
+calls it where it would otherwise call `bucket_effects()`.
+
+| ID | Case | Test function |
+|---|---|---|
+| GB-01 | A holder with nothing applied gives an empty dict | `test_gb_01_a_holder_with_nothing_applied_gives_an_empty_dict` |
+| GB-02 | With the default hook, the result equals `bucket_effects(active_effects)` | `test_gb_02_the_default_hook_gives_the_stores_buckets` |
+| GB-03 | An override of `at_post_bucket_effects()` is handed the store's buckets, and what it returns is what `get_effect_buckets()` returns | `test_gb_03_the_hook_is_handed_the_store_and_its_return_is_the_result` |
+| GB-04 | The hook runs when the store is empty, so a source outside it still counts | `test_gb_04_the_hook_runs_when_the_store_is_empty` |
+
+GB-04 guards the shortcut. An early return on an empty store would skip the hook, and a holder with
+no effects applied would lose everything its other sources contribute.
 
 ## Open decisions
 

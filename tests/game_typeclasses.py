@@ -129,6 +129,23 @@ class RaisingHookStub(EffectsObjectStub):
         raise RuntimeError("consumer hook bug")
 
 
+class ExtraSourceStub(EffectsObjectStub):
+    """A holder with one payload from outside its store — GB-03 and GB-04.
+
+    Overrides ``at_post_bucket_effects()`` to record what it was handed, then
+    adds ``EXTRA`` and returns the result, as a consumer with worn gear or an
+    aura would.
+    """
+
+    EXTRA = {"type": "size_shift", "value": 9}
+
+    def at_post_bucket_effects(self, buckets):
+        self.ndb.handed = {kind: list(payloads) for kind, payloads in buckets.items()}
+        buckets = super().at_post_bucket_effects(buckets)
+        buckets.setdefault("size_shift", []).append(self.EXTRA)
+        return buckets
+
+
 class PlainConditionsStub(ConditionsMixin, DefaultObject):
     """The conditions mixin with nothing overridden.
 

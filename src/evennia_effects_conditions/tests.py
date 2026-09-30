@@ -1965,3 +1965,56 @@ class BucketEffectsTests(TestCase):
         buckets = bucket_effects({"ring": {"effects": [payload]}})
 
         self.assertIs(buckets["stat_bonus"][0], payload)
+
+
+class EffectBucketsTests(DjangoTestCase):
+    """A holder's buckets, and the seam for sources outside the store (GB)."""
+
+    def setUp(self):
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import EffectsObjectStub, ExtraSourceStub
+
+        self.holder = create_object(EffectsObjectStub, key="holder")
+        self.extra = create_object(ExtraSourceStub, key="extra")
+
+    def test_gb_01_a_holder_with_nothing_applied_gives_an_empty_dict(self):
+        """GB-01"""
+        self.assertEqual(self.holder.get_effect_buckets(), {})
+
+    def test_gb_02_the_default_hook_gives_the_stores_buckets(self):
+        """GB-02"""
+        self.holder.apply_named_effect(
+            "poisoned",
+            effects=[
+                {"type": "stat_bonus", "stat": "strength", "value": 1},
+                {"type": "size_shift", "value": 1},
+            ],
+        )
+
+        buckets = self.holder.get_effect_buckets()
+
+        self.assertEqual(buckets, bucket_effects(self.holder.active_effects))
+        self.assertEqual(set(buckets), {"stat_bonus", "size_shift"})
+
+    def test_gb_03_the_hook_is_handed_the_store_and_its_return_is_the_result(self):
+        """GB-03"""
+        payload = {"type": "stat_bonus", "stat": "strength", "value": 1}
+        self.extra.apply_named_effect("poisoned", effects=[payload])
+
+        buckets = self.extra.get_effect_buckets()
+
+        self.assertEqual(self.extra.ndb.handed, {"stat_bonus": [payload]})
+        self.assertEqual(
+            buckets,
+            {"stat_bonus": [payload], "size_shift": [self.extra.EXTRA]},
+        )
+
+    def test_gb_04_the_hook_runs_when_the_store_is_empty(self):
+        """GB-04"""
+        # An early return on an empty store would skip the hook, and a holder
+        # with nothing applied would lose what its other sources contribute.
+        self.assertEqual(
+            self.extra.get_effect_buckets(),
+            {"size_shift": [self.extra.EXTRA]},
+        )

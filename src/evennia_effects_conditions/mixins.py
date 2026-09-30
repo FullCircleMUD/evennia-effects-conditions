@@ -22,7 +22,7 @@ from evennia_effects_conditions.config import (
     UNSET,
     WALL_CLOCK,
 )
-from evennia_effects_conditions.payloads import InvalidPayloadError
+from evennia_effects_conditions.payloads import InvalidPayloadError, bucket_effects
 
 
 class ConditionsMixin:
@@ -796,6 +796,37 @@ class EffectsMixin(ConditionsMixin):
         if had_payload:
             self.at_effects_changed()
         return list(records)
+
+    # ── the buckets ────────────────────────────────────────────────── #
+
+    def get_effect_buckets(self):
+        """The payloads acting on this holder, grouped by type.
+
+        ``bucket_effects(self.active_effects)``, handed through
+        ``at_post_bucket_effects()`` and returned as that hook gives it
+        back. A consumer's ``at_effects_changed()`` override reads this where
+        it would otherwise bucket the store itself. See GB-01 to GB-04.
+
+        The hook runs on every call, the store empty or not — a holder with
+        nothing applied can still have payloads from elsewhere.
+        """
+        return self.at_post_bucket_effects(bucket_effects(self.active_effects))
+
+    def at_post_bucket_effects(self, buckets):
+        """Add payloads from sources outside the store. Returns the buckets.
+
+        Returns ``buckets`` unchanged by default. Override to add what the
+        store does not hold — worn gear, an aura, the ground underfoot —
+        calling ``super()`` first. The library knows nothing of any such
+        source; it hands the buckets over and returns what comes back.
+
+        Args:
+            buckets (dict): ``{type: [payload, ...]}`` from the store.
+
+        Returns:
+            dict: The buckets the holder's payloads are read from.
+        """
+        return buckets
 
     # ── the consumer seam ──────────────────────────────────────────── #
 
