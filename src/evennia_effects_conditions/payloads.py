@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: BSD-3-Clause
 """Working with the payloads on an effect record.
 
-The `effects` list is the consumer's, stored verbatim and never interpreted
-here. What this module adds is one structural assumption — that a payload is a
-mapping carrying a ``type`` — and one service built on it: grouping a store's
-payloads by that type so a consumer with several things to rebuild walks the
-store once rather than once per thing.
+A payload is a mapping carrying a ``type``. The consumer declares each type as
+a ``PayloadSpec`` (see ``specs.py``), and ``apply_named_effect()`` checks every
+payload against its spec before storing it; ``InvalidPayloadError`` is what a
+payload that does not match raises. Once stored, the `effects` list is kept
+verbatim and never interpreted.
 
-Grouping by a key is not interpreting. Nothing here knows what any type
+The one service here is grouping a store's payloads by type, so a consumer
+with several things to rebuild walks the store once rather than once per
+thing. Grouping by a key is not interpreting. Nothing here knows what any type
 *means*, and every function behaves identically if each type string is a
 random UUID.
 """
@@ -31,7 +33,15 @@ class UntypedEffectError(ValueError):
 
 
 class InvalidPayloadError(ValueError):
-    """A payload does not match the spec declared for its type."""
+    """A payload does not match the spec declared for its type.
+
+    Raised at apply, before anything is stored: a payload that is not a
+    mapping, carries no ``type``, names a type the payload enum does not
+    declare, or whose keys are not exactly its spec's fields. The message
+    names the payload and what is wrong with it.
+
+    ``ValueError`` because the payload's shape is what is wrong with it.
+    """
 
 
 def bucket_effects(records):

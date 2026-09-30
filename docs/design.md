@@ -21,6 +21,7 @@ The library holds **state and lifecycle**. The game holds **everything a state m
 | The countdown machinery, stepped from outside; the wall-clock timer, driven from inside | What a round, a dance or a day is, and when one has happened |
 | Delivering first-person text; one seam for third-person broadcast | Who in the room is allowed to see the broadcast |
 | The break and clear verbs | When to call them, and which effects they cover |
+| Checking each payload's shape against its declared type, at apply | Which payload types exist, their fields, and what their values mean |
 | Calling `at_effects_changed()` after a payload changes | What a stat is, and rebuilding stats from the records |
 | Calling `at_conditions_changed()` on a condition's transitions | What a condition means, and what to do about one arriving or leaving |
 
@@ -30,9 +31,9 @@ Everything below follows from that split.
 
 ### The catalogue, without the library owning it
 
-The library ships two frozen dataclasses — `ConditionSpec` and `EffectSpec` — and two member-less
-base enums, `Condition` and `NamedEffect`. The consumer declares one subclass of each, every member
-carrying a spec as its value:
+The library ships three frozen dataclasses — `ConditionSpec`, `EffectSpec` and `PayloadSpec` — and
+three member-less base enums, `Condition`, `NamedEffect` and `PayloadType`. The consumer declares one
+subclass of each, every member carrying a spec as its value:
 
 ```python
 class MyConditions(Condition):
@@ -40,6 +41,9 @@ class MyConditions(Condition):
 
 class MyEffects(NamedEffect):
     STUNNED = EffectSpec("stunned", lifecycle="combat_rounds", ...)
+
+class MyPayloads(PayloadType):
+    STAT_BONUS = PayloadSpec("stat_bonus", fields=("stat", "value"))
 ```
 
 The base's `__new__` accepts exactly the spec class and nothing else, so a malformed member fails
@@ -53,16 +57,17 @@ The enums reach the library as settings naming modules, per
 ```python
 EFFECTS_CONDITION_ENUM = "world.effects.MyConditions"
 EFFECTS_EFFECT_ENUM = "world.effects.MyEffects"
+EFFECTS_PAYLOAD_ENUM = "world.effects.MyPayloads"
 ```
 
-Neither has a safe default, so both are checked at boot and the game does not start without them.
+None has a safe default, so all three are checked at boot and the game does not start without them.
 Boot also judges each set as a whole — aliased members (Python silently folds two members declaring
 the same key into one; boot is the only place that can be seen), field types, and the two
 cross-checks: every `EffectSpec.condition` names a declared condition, every lifecycle names a
 declared one. Every problem is collected and raised once.
 
 An **empty** consumer enum is allowed — an effects-only game has no conditions to declare, and the
-other way round. This diverges from evennia-survival, whose meters are meaningless without stages;
+other way round, and a game whose effects carry no payloads declares an empty `PayloadType`. This diverges from evennia-survival, whose meters are meaningless without stages;
 here each half of the system stands alone.
 
 **No cross-enum key-uniqueness check.** The same key in both enums is the legitimate dual-system
@@ -80,6 +85,21 @@ hooks read — goes in the spec's `extras` mapping, stored read-only. `apply_nam
 takes a per-application `extras=`, merged over the spec's, so values known only at cast time reach
 the record. Subclassing the spec dataclasses is not blocked but not supported; `extras` is the one
 declared shape.
+
+### Payloads, checked but not interpreted
+
+A payload is a plain mapping carrying a `type`. The consumer declares each type as a `PayloadSpec` —
+its key and the fields a payload of that type carries — and may give it an `at_validate(payload)`
+callable for its own checks on values, which refuses by raising.
+
+`apply_named_effect()` checks every payload before anything else happens, whether or not the effect
+is already active: the `type` must name a declared member, the other keys must be exactly its
+fields, then `at_validate` runs. The first failure raises `InvalidPayloadError` (or whatever
+`at_validate` raised) and nothing is stored. Apply is the only way a payload enters the store, so a
+stored payload has passed.
+
+Checking a shape against the consumer's own declaration is not interpreting it. The library never
+learns what a field means.
 
 ### Stats, without the library knowing any
 
@@ -233,7 +253,7 @@ for readjustments is a separate field if one is ever needed.
 active_effects = {
     "shield": {
         "condition": "some_condition" or None,   # key string
-        "effects": [...],                        # opaque payload, never read
+        "effects": [...],                        # payloads, validated at apply, never interpreted
         "duration": int or None,
         "lifecycle": "combat_rounds" | <wall-clock> | None,
         "messages": {...},                       # resolved at apply: spec + overrides
@@ -257,7 +277,9 @@ their content rides in `extras`, read by the consumer's tick hook.
 
 ## Out of scope
 
-- **Interpreting effect payloads.** No stat names, no bonus arithmetic, no damage types.
+- **Interpreting effect payloads.** No stat names, no bonus arithmetic, no damage types. The
+  library checks a payload's shape against the consumer's `PayloadSpec`; what its values mean, and
+  any check on them, is the consumer's — `at_validate` is where that check goes.
 - **Convenience wrappers** (`apply_stunned(…)`-style). Sugar over `apply_named_effect()` is the
   consumer's four lines per effect.
 - **Policy sets** — what breaks on a hostile action, what incapacitates, what blocks movement.

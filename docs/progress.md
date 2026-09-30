@@ -2,6 +2,18 @@
 
 Running log of milestones with links to evidence. Reverse chronological — newest first.
 
+## 2026-09-30 — payload types, declared and validated
+
+145 tests, all passing. The consumer declares its payload types and every payload is checked at
+apply, so a misspelt `type` is refused rather than landing in a bucket nobody reads.
+
+- **SP-10 to SP-22** — `PayloadSpec` and `PayloadType`, declared the way conditions and effects are.
+  `PayloadSpec.validate()` checks one payload's shape, then the consumer's optional `at_validate`.
+- **CF-24 to CF-29** — `EFFECTS_PAYLOAD_ENUM` is required, resolved like the other two, its members
+  audited. The demo gamedir declares `DemoPayloads`.
+- **EF-35 to EF-39** — `apply_named_effect()` validates every payload first, whether or not the
+  effect is active, and a refusal leaves nothing behind.
+
 ## 2026-09-24 — a second consumer seam for conditions
 
 115 tests, all passing. `CN-12` to `CN-18` added `at_conditions_changed(condition, is_held)`, a no-op

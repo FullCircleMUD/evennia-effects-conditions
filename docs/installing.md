@@ -31,14 +31,14 @@ INSTALLED_APPS += ["evennia_effects_conditions"]
 
 ## 4. Declare your catalogue
 
-One module of your own, anywhere in your gamedir you like, declaring what conditions and effects
-your game has. Subclass the library's bases; every member's value is a spec:
+One module of your own, anywhere in your gamedir you like, declaring what conditions, effects and
+payload types your game has. Subclass the library's bases; every member's value is a spec:
 
 ```python
 # world/effects.py
 from evennia_effects_conditions.config import WALL_CLOCK
 from evennia_effects_conditions.specs import (
-    Condition, ConditionSpec, EffectSpec, NamedEffect,
+    Condition, ConditionSpec, EffectSpec, NamedEffect, PayloadSpec, PayloadType,
 )
 
 
@@ -55,21 +55,42 @@ class MyConditions(Condition):
 class MyEffects(NamedEffect):
     STUNNED = EffectSpec("stunned", lifecycle="combat_rounds")
     INVISIBLE = EffectSpec("invisible", condition="hidden", lifecycle=WALL_CLOCK)
+
+
+MY_STATS = {"strength", "dexterity"}
+
+
+def check_stat(payload):
+    if payload["stat"] not in MY_STATS:
+        raise ValueError(f"{payload!r} names a stat this game does not have")
+
+
+class MyPayloads(PayloadType):
+    STAT_BONUS = PayloadSpec("stat_bonus", fields=("stat", "value"), at_validate=check_stat)
+    SIZE_SHIFT = PayloadSpec("size_shift", fields=("value",))
 ```
 
 A message field left out falls back to a generated generic; an empty string is deliberately
 silent. `EffectSpec` also carries `on_pre_apply_new` / `on_apply` / `on_remove` / `on_tick` callables,
 `companion_script_key`, and an `extras` mapping for anything game-specific your hooks read.
 
+A payload is a mapping carrying a `type` — `{"type": "stat_bonus", "stat": "strength", "value": 2}`.
+Each `PayloadSpec` names a type and every other key its payloads carry; all are required.
+`at_validate` is optional: your own check on the values, called once the keys pass, refusing by
+raising. `apply_named_effect()` checks every payload it is handed before doing anything, and refuses
+the whole call with `InvalidPayloadError` — or your `at_validate`'s own error — if one fails. A game
+whose effects carry no payloads declares an empty `PayloadType` subclass.
+
 ## 5. Point the settings at it
 
 ```python
 EFFECTS_CONDITION_ENUM = "world.effects.MyConditions"
 EFFECTS_EFFECT_ENUM = "world.effects.MyEffects"
+EFFECTS_PAYLOAD_ENUM = "world.effects.MyPayloads"
 EFFECTS_LIFECYCLES = ("combat_rounds",)
 ```
 
-Both enum settings are required — the game does not start without them, and boot validates the
+All three enum settings are required — the game does not start without them, and boot validates the
 whole catalogue with every problem in one refusal. `EFFECTS_LIFECYCLES` declares the countdown
 lifecycles your game will step; omit it entirely if you use only the wall clock.
 
@@ -161,6 +182,7 @@ started again.
 |---|---|---|
 | `EFFECTS_CONDITION_ENUM` | Dotted path to your `Condition` subclass | Boot is refused |
 | `EFFECTS_EFFECT_ENUM` | Dotted path to your `NamedEffect` subclass | Boot is refused |
+| `EFFECTS_PAYLOAD_ENUM` | Dotted path to your `PayloadType` subclass | Boot is refused |
 
 ## Optional settings
 
@@ -194,5 +216,5 @@ of line: the boot refusal, at ERROR, carrying the same text as the raised except
 
 ## That is all of it
 
-Declare the catalogue, point two settings at it, mix in, answer the hooks you need, and step your
+Declare the catalogue, point three settings at it, mix in, answer the hooks you need, and step your
 lifecycles where your events happen.
