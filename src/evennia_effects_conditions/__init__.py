@@ -19,6 +19,8 @@ def __getattr__(name):
         "ConditionSpec": "evennia_effects_conditions.specs",
         "EffectSpec": "evennia_effects_conditions.specs",
         "NamedEffect": "evennia_effects_conditions.specs",
+        "PayloadSpec": "evennia_effects_conditions.specs",
+        "PayloadType": "evennia_effects_conditions.specs",
         "ConditionsMixin": "evennia_effects_conditions.mixins",
         "EffectsMixin": "evennia_effects_conditions.mixins",
         "EffectsTimerScript": "evennia_effects_conditions.scripts",
@@ -26,6 +28,7 @@ def __getattr__(name):
         "UNSET": "evennia_effects_conditions.config",
         "bucket_effects": "evennia_effects_conditions.payloads",
         "UntypedEffectError": "evennia_effects_conditions.payloads",
+        "InvalidPayloadError": "evennia_effects_conditions.payloads",
     }
     if name in exports:
         from importlib import import_module

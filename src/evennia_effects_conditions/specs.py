@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 """The declaration surface a consumer subclasses to declare its catalogue.
 
-The library ships two frozen dataclasses — ``ConditionSpec`` and ``EffectSpec``
-— and two member-less base enums, ``Condition`` and ``NamedEffect``. A consumer
-declares one subclass of each, every member carrying a spec as its value::
+The library ships three frozen dataclasses — ``ConditionSpec``, ``EffectSpec``
+and ``PayloadSpec`` — and three member-less base enums, ``Condition``,
+``NamedEffect`` and ``PayloadType``. A consumer declares one subclass of each,
+every member carrying a spec as its value::
 
     class MyConditions(Condition):
         HIDDEN = ConditionSpec("hidden", start_first="You blend into the shadows.")
@@ -11,15 +12,18 @@ declares one subclass of each, every member carrying a spec as its value::
     class MyEffects(NamedEffect):
         STUNNED = EffectSpec("stunned", lifecycle="combat_rounds")
 
+    class MyPayloads(PayloadType):
+        STAT_BONUS = PayloadSpec("stat_bonus", fields=("stat", "value"))
+
 Each base's ``__new__`` accepts exactly its own spec class and nothing else, so
 a malformed member fails at the ``class`` statement rather than surviving until
 something reads it. The member's ``_value_`` is the spec's ``key`` string,
 which is what keeps ``MyEffects("stunned")`` resolving — game code passes raw
 strings everywhere, and most consumer modules never import the enum at all.
 
-The two spec classes are deliberately **not** related by inheritance: each base
+The spec classes are deliberately **not** related by inheritance: each base
 checks its own class with ``isinstance``, and inheritance would make one base
-silently accept the other's spec.
+silently accept another's spec.
 
 Whether a declared *set* is workable — every referenced condition and lifecycle
 declared — is checked at boot, not here. A member cannot judge the company it
@@ -27,14 +31,18 @@ was declared in. What declaration does refuse is two members sharing a key:
 Python's enum machinery would otherwise fold them into an alias, silently
 dropping the second spec.
 
-This module imports nothing but the stdlib, because the consumer's declaration
-modules resolve during ``django.setup()``.
+This module imports nothing but the stdlib and ``payloads``, which imports
+nothing, because the consumer's declaration modules resolve during
+``django.setup()``.
 """
 
+from collections import abc
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional, Sequence
+
+from evennia_effects_conditions.payloads import InvalidPayloadError
 
 
 @dataclass(frozen=True)
@@ -79,6 +87,77 @@ class EffectSpec:
         object.__setattr__(self, "extras", MappingProxyType(dict(self.extras)))
 
 
+@dataclass(frozen=True)
+class PayloadSpec:
+    """What a consumer declares about one payload type.
+
+    Attributes:
+        key: the string a payload of this type carries under ``type``.
+        fields: every other key such a payload carries — all required, none
+            optional.
+        at_validate: the consumer's own check, called as
+            ``at_validate(payload)`` once the shape check passes. It refuses
+            by raising; its return value is ignored.
+    """
+
+    key: str
+    fields: Sequence[str]
+    at_validate: Optional[Callable] = None
+
+    def __post_init__(self):
+        # Snapshotted so later mutation of what the consumer passed cannot
+        # change the spec. object.__setattr__ because the dataclass is frozen.
+        object.__setattr__(self, "fields", tuple(self.fields))
+
+    def validate(self, payload):
+        """Check one payload against this spec.
+
+        The shape first — a mapping, whose ``type`` is this spec's key and
+        whose other keys are exactly ``fields`` — then ``at_validate``, if one
+        was declared. Values are not the library's to judge; that is what
+        ``at_validate`` is for.
+
+        Any mapping passes the mapping check, not just a dict: a payload read
+        back from an Attribute is a mapping that is not a dict.
+
+        Raises:
+            InvalidPayloadError: the shape does not match, naming what is
+                wrong.
+            Whatever ``at_validate`` raises, unchanged.
+        """
+        if not isinstance(payload, abc.Mapping):
+            raise InvalidPayloadError(
+                f"a {self.key!r} payload must be a mapping, got {payload!r}"
+            )
+
+        if payload.get("type") != self.key:
+            raise InvalidPayloadError(
+                f"payload {payload!r} is not a {self.key!r} payload — its "
+                f"type is {payload.get('type')!r}"
+            )
+
+        declared = set(self.fields)
+        present = set(payload) - {"type"}
+
+        missing = [name for name in self.fields if name not in present]
+        if missing:
+            raise InvalidPayloadError(
+                f"{self.key!r} payload {payload!r} is missing "
+                f"{', '.join(repr(name) for name in missing)}"
+            )
+
+        undeclared = sorted(present - declared)
+        if undeclared:
+            raise InvalidPayloadError(
+                f"{self.key!r} payload {payload!r} carries undeclared "
+                f"{', '.join(repr(name) for name in undeclared)} — declared "
+                f"fields are {', '.join(repr(name) for name in self.fields)}"
+            )
+
+        if self.at_validate:
+            self.at_validate(payload)
+
+
 def _spec_member(cls, spec, spec_class):
     """Build one enum member from a spec, refusing what declaration can see.
 
@@ -120,3 +199,10 @@ class NamedEffect(Enum):
 
     def __new__(cls, spec):
         return _spec_member(cls, spec, EffectSpec)
+
+
+class PayloadType(Enum):
+    """Base for a consumer's payload-type catalogue. Ships no members."""
+
+    def __new__(cls, spec):
+        return _spec_member(cls, spec, PayloadSpec)

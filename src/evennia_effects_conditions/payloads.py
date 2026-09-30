@@ -30,6 +30,10 @@ class UntypedEffectError(ValueError):
     """
 
 
+class InvalidPayloadError(ValueError):
+    """A payload does not match the spec declared for its type."""
+
+
 def bucket_effects(records):
     """Group every payload in an effect store by its type.
 

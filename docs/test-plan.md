@@ -20,7 +20,7 @@ Behaviour is agreed here first, before any test or code — see
 | Prefix | Covers |
 |---|---|
 | `SC` | The scaffold — the package installs and the runner runs |
-| `SP` | The spec dataclasses and the two base enums a consumer subclasses |
+| `SP` | The spec dataclasses, the three base enums a consumer subclasses, and payload validation |
 | `CF` | The settings and the boot check |
 | `CN` | The conditions mixin — ref counting, transition messaging, the broadcast seam |
 | `EF` | The effects mixin core — apply, remove, query, the recalculate hook |
@@ -75,6 +75,36 @@ declared inline in the tests.
 | SP-07 | A spec declares with only a key — every other field defaults (messages `None`, callables `None`, `lifecycle`/`condition` `None`, `extras` empty) | `test_sp_07_key_only_declaration_defaults_every_other_field` |
 | SP-08 | The two base enums themselves have no members | `test_sp_08_the_base_enums_have_no_members` |
 | SP-09 | Two members of one enum may not share a key — refused at the `class` statement, where Python would otherwise fold them into a silent alias | `test_sp_09_two_members_sharing_a_key_are_refused_at_declaration` |
+
+### Payload types
+
+A consumer declares its payload types the same way: a `PayloadType` subclass, every member's value a
+`PayloadSpec` naming the type's key and the fields a payload of that type carries. The type's key is
+the string a payload holds under `type`, so `MyPayloads("stat_bonus")` resolves the declaration a
+payload claims.
+
+`PayloadSpec.validate(payload)` checks one payload against its spec: a mapping, its `type` this
+spec's key, its other keys exactly the declared `fields`. A refusal raises `InvalidPayloadError`
+naming what is wrong. Only then does it call the spec's `at_validate(payload)`, if one was declared —
+the consumer's own check on values, refusing by raising. Checking what a value *means* stays with the
+consumer; the library checks shape.
+
+`PayloadSpec` is independent of the other two spec classes, for the reason given above.
+
+| ID | Case | Test function |
+|---|---|---|
+| SP-10 | A `PayloadType` member carries its `PayloadSpec`, its value is the spec's key, and lookup by the raw key string resolves to the member | `test_sp_10_payload_member_carries_its_spec_and_resolves_by_key` |
+| SP-11 | A `PayloadType` member declared with anything but a `PayloadSpec` — including an `EffectSpec` or `ConditionSpec` — is refused at class creation | `test_sp_11_payload_member_refuses_anything_but_a_payload_spec` |
+| SP-12 | Two `PayloadType` members may not share a key — refused at the `class` statement | `test_sp_12_two_payload_members_sharing_a_key_are_refused` |
+| SP-13 | The `PayloadType` base has no members | `test_sp_13_the_payload_base_enum_has_no_members` |
+| SP-14 | A `PayloadSpec` is frozen, and its `fields` are snapshotted — changing the sequence the consumer passed does not change the spec | `test_sp_14_payload_spec_is_frozen_and_snapshots_its_fields` |
+| SP-15 | `validate()` accepts a mapping whose `type` is the spec's key and whose other keys are exactly its `fields` — a plain dict or any other mapping | `test_sp_15_validate_accepts_a_payload_matching_its_spec` |
+| SP-16 | `validate()` refuses a payload that is not a mapping | `test_sp_16_validate_refuses_a_payload_that_is_not_a_mapping` |
+| SP-17 | `validate()` refuses a payload whose `type` is missing or is not this spec's key | `test_sp_17_validate_refuses_a_payload_of_another_type` |
+| SP-18 | `validate()` refuses a payload missing a declared field, naming the field | `test_sp_18_validate_refuses_a_missing_field_and_names_it` |
+| SP-19 | `validate()` refuses a payload carrying an undeclared field, naming the field | `test_sp_19_validate_refuses_an_undeclared_field_and_names_it` |
+| SP-20 | `at_validate` is called with the payload only once the shape check passes, and not at all when it fails | `test_sp_20_at_validate_runs_only_after_the_shape_check_passes` |
+| SP-21 | An exception raised by `at_validate` reaches the caller unchanged | `test_sp_21_an_at_validate_exception_reaches_the_caller_unchanged` |
 
 ## CF — the settings and the boot check
 

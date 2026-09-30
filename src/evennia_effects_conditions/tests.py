@@ -7,6 +7,7 @@ function here carries its case ID as its docstring so the trail reads both ways.
 
 import dataclasses
 import os
+from types import MappingProxyType
 from unittest import TestCase
 
 from django.core.exceptions import ImproperlyConfigured
@@ -26,6 +27,7 @@ from evennia_effects_conditions.config import (
     get_lifecycles,
 )
 from evennia_effects_conditions.payloads import (
+    InvalidPayloadError,
     UntypedEffectError,
     bucket_effects,
 )
@@ -34,6 +36,8 @@ from evennia_effects_conditions.specs import (
     ConditionSpec,
     EffectSpec,
     NamedEffect,
+    PayloadSpec,
+    PayloadType,
 )
 
 
@@ -150,6 +154,141 @@ class SpecTests(TestCase):
             class DupConds(Condition):
                 FIRST = ConditionSpec("same")
                 SECOND = ConditionSpec("same", start_first="differs")
+
+    def test_sp_10_payload_member_carries_its_spec_and_resolves_by_key(self):
+        """SP-10"""
+        spec = PayloadSpec("stat_bonus", fields=("stat", "value"))
+
+        class Payloads(PayloadType):
+            STAT_BONUS = spec
+
+        self.assertIs(Payloads.STAT_BONUS.spec, spec)
+        self.assertEqual(Payloads.STAT_BONUS.value, "stat_bonus")
+        self.assertIs(Payloads("stat_bonus"), Payloads.STAT_BONUS)
+
+    def test_sp_11_payload_member_refuses_anything_but_a_payload_spec(self):
+        """SP-11"""
+        with self.assertRaises(TypeError):
+
+            class EffectInstead(PayloadType):
+                STAT_BONUS = EffectSpec("stat_bonus")
+
+        with self.assertRaises(TypeError):
+
+            class ConditionInstead(PayloadType):
+                STAT_BONUS = ConditionSpec("stat_bonus")
+
+        with self.assertRaises(TypeError):
+
+            class BareString(PayloadType):
+                STAT_BONUS = "stat_bonus"
+
+    def test_sp_12_two_payload_members_sharing_a_key_are_refused(self):
+        """SP-12"""
+        with self.assertRaises(ValueError):
+
+            class DupPayloads(PayloadType):
+                FIRST = PayloadSpec("same", fields=("value",))
+                SECOND = PayloadSpec("same", fields=("stat", "value"))
+
+    def test_sp_13_the_payload_base_enum_has_no_members(self):
+        """SP-13"""
+        self.assertEqual(list(PayloadType), [])
+
+    def test_sp_14_payload_spec_is_frozen_and_snapshots_its_fields(self):
+        """SP-14"""
+        given = ["stat", "value"]
+        spec = PayloadSpec("stat_bonus", fields=given)
+
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            spec.key = "other"
+
+        given.append("extra")
+        self.assertEqual(tuple(spec.fields), ("stat", "value"))
+
+    def test_sp_15_validate_accepts_a_payload_matching_its_spec(self):
+        """SP-15"""
+        spec = PayloadSpec("stat_bonus", fields=("stat", "value"))
+        payload = {"type": "stat_bonus", "stat": "strength", "value": 2}
+
+        self.assertIsNone(spec.validate(payload))
+        # A stored payload comes back from an Attribute as a mapping that is
+        # not a dict, and has to validate the same.
+        self.assertIsNone(spec.validate(MappingProxyType(payload)))
+
+    def test_sp_16_validate_refuses_a_payload_that_is_not_a_mapping(self):
+        """SP-16"""
+        spec = PayloadSpec("stat_bonus", fields=("stat", "value"))
+
+        for not_a_mapping in (None, "stat_bonus", ["stat_bonus", "strength", 2]):
+            with self.subTest(payload=not_a_mapping):
+                with self.assertRaises(InvalidPayloadError):
+                    spec.validate(not_a_mapping)
+
+    def test_sp_17_validate_refuses_a_payload_of_another_type(self):
+        """SP-17"""
+        spec = PayloadSpec("stat_bonus", fields=("stat", "value"))
+
+        for payload in (
+            {"type": "hit_bonus", "stat": "strength", "value": 2},
+            {"stat": "strength", "value": 2},
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(InvalidPayloadError):
+                    spec.validate(payload)
+
+    def test_sp_18_validate_refuses_a_missing_field_and_names_it(self):
+        """SP-18"""
+        spec = PayloadSpec("stat_bonus", fields=("stat", "value"))
+
+        with self.assertRaises(InvalidPayloadError) as ctx:
+            spec.validate({"type": "stat_bonus", "stat": "strength"})
+
+        self.assertIn("value", str(ctx.exception))
+
+    def test_sp_19_validate_refuses_an_undeclared_field_and_names_it(self):
+        """SP-19"""
+        spec = PayloadSpec("stat_bonus", fields=("stat", "value"))
+
+        with self.assertRaises(InvalidPayloadError) as ctx:
+            spec.validate(
+                {"type": "stat_bonus", "stat": "strength", "value": 2, "valeu": 2}
+            )
+
+        self.assertIn("valeu", str(ctx.exception))
+
+    def test_sp_20_at_validate_runs_only_after_the_shape_check_passes(self):
+        """SP-20"""
+        seen = []
+        spec = PayloadSpec(
+            "stat_bonus", fields=("stat", "value"), at_validate=seen.append
+        )
+
+        with self.assertRaises(InvalidPayloadError):
+            spec.validate({"type": "stat_bonus", "stat": "strength"})
+        self.assertEqual(seen, [])
+
+        payload = {"type": "stat_bonus", "stat": "strength", "value": 2}
+        spec.validate(payload)
+        self.assertEqual(seen, [payload])
+
+    def test_sp_21_an_at_validate_exception_reaches_the_caller_unchanged(self):
+        """SP-21"""
+
+        class NotManaged(Exception):
+            pass
+
+        raised = NotManaged("stat 'strenght' is not managed")
+
+        def refuse(payload):
+            raise raised
+
+        spec = PayloadSpec("stat_bonus", fields=("stat", "value"), at_validate=refuse)
+
+        with self.assertRaises(NotManaged) as ctx:
+            spec.validate({"type": "stat_bonus", "stat": "strenght", "value": 2})
+
+        self.assertIs(ctx.exception, raised)
 
 
 class BootCheckTests(SimpleTestCase):
