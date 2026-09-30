@@ -1467,6 +1467,38 @@ class EffectsMixinCoreTests(DjangoTestCase):
                 )
 
 
+    # ── duration ───────────────────────────────────────────────────── #
+
+    def test_ef_40_a_duration_that_is_not_none_or_positive_is_refused(self):
+        """EF-40"""
+        for bad in (0, -1, 1.5, "3", True):
+            with self.subTest(duration=bad):
+                with self.assertRaises(ValueError):
+                    self.holder.apply_named_effect("trapped", duration=bad)
+                self.assertFalse(self.holder.has_effect("trapped"))
+
+    def test_ef_41_a_bad_duration_is_refused_before_anything_happens(self):
+        """EF-41"""
+        from tests.spec_stubs import CALLBACK_LOG
+
+        # A new application: the pre-apply hook never runs.
+        with self.assertRaises(ValueError):
+            self.holder.apply_named_effect("gated", duration=0)
+        self.assertEqual(CALLBACK_LOG, [])
+        self.assertFalse(self.holder.has_effect("gated"))
+
+        # An active record: refused under every on_active, and left alone.
+        self.holder.apply_named_effect("trapped", duration=2)
+        for mode in ("refuse", "reset", "extend"):
+            with self.subTest(mode=mode):
+                with self.assertRaises(ValueError):
+                    self.holder.apply_named_effect(
+                        "trapped", duration=0, on_active=mode
+                    )
+                self.assertEqual(
+                    self.holder.get_named_effect("trapped")["duration"], 2
+                )
+
 class LifecycleTests(DjangoTestCase):
     """Lifecycles — advancing, clearing, the wall-clock timer (LC)."""
 

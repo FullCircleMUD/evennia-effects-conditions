@@ -330,6 +330,18 @@ call is refused whatever state the effect is in.
 | EF-38 | One invalid payload among valid ones refuses the whole application | `test_ef_38_one_invalid_payload_refuses_the_whole_application` |
 | EF-39 | Validation runs whether or not the effect is already active — a bad payload is refused under refuse, reset and extend | `test_ef_39_validation_runs_whether_or_not_the_effect_is_active` |
 
+### Duration
+
+A duration is `None` — permanent, on every lifecycle — or a whole number of 1 or more. Anything else is
+a bug in the call and is refused before anything else happens, beside the `on_active` check. Zero is
+refused rather than read: on the wall clock it would start no timer and stay forever, and on a
+countdown it would expire on the next step, so it has no single meaning to keep.
+
+| ID | Case | Test function |
+|---|---|---|
+| EF-40 | A `duration` that is neither `None` nor a whole number of 1 or more is refused with `ValueError` — `0`, a negative, a float, a string, a bool (`True` would otherwise read as 1) | `test_ef_40_a_duration_that_is_not_none_or_positive_is_refused` |
+| EF-41 | The refusal comes before anything else and whether or not the effect is active — no `on_pre_apply_new`, nothing stored, and a standing record left alone under refuse, reset and extend | `test_ef_41_a_bad_duration_is_refused_before_anything_happens` |
+
 ## LC — lifecycles
 
 The clocks from [design.md](design.md) § Two clocks and a blank. Countdowns are stepped from

@@ -301,7 +301,8 @@ class EffectsMixin(ConditionsMixin):
             source: whatever caused this; handed to ``on_apply``, not stored.
             effects: payload list, each checked against the spec its
                 ``type`` names in the payload enum, then stored verbatim.
-            duration: int, or None for no expiry of its own.
+            duration: a whole number of 1 or more, or None for no expiry
+                of its own. Anything else raises ``ValueError``.
             messages: per-application overrides, merged over the spec's.
             extras: per-application values, merged over the spec's.
             on_active: what to do when the effect is already active —
@@ -318,6 +319,20 @@ class EffectsMixin(ConditionsMixin):
             raise ValueError(
                 f"on_active must be one of {ON_ACTIVE_CHOICES}, "
                 f"got {on_active!r}."
+            )
+
+        # None is permanent on every lifecycle; anything else counts down, so
+        # it has to be something to count. Zero has no single meaning — the
+        # wall clock would start no timer and keep it forever, a countdown
+        # would drop it on the next step — so it is refused with the rest.
+        if duration is not None and (
+            isinstance(duration, bool)
+            or not isinstance(duration, int)
+            or duration < 1
+        ):
+            raise ValueError(
+                f"duration must be None or a whole number of 1 or more, "
+                f"got {duration!r}."
             )
 
         # Ahead of the already-active branch: a bad payload is a bug in the
