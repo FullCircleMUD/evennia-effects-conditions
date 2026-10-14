@@ -79,8 +79,8 @@ surface by surface.
   the modules, boot validating the whole set with every problem collected into one raise.
 - **Lifecycles**: consumer-named countdowns stepped by `advance_effects(name)`, one library-driven
   wall clock, and unmanaged records for external scripts.
-- **Hooks over knowledge**: `at_effects_changed()` for stats, `effects_broadcast()` for
-  third-person delivery, spec callables for side effects and ticks. The library never learns
+- **Hooks over knowledge**: `at_effects_changed()` for stats, `at_effect_transition()` for
+  start and end messages, `effects_broadcast()` for third-person delivery, spec callables for side effects and ticks. The library never learns
   what a stat, a round, or concealment is.
 - Out-of-scope rulings recorded in [../CLAUDE.md](../CLAUDE.md); two open decisions carried in
   [test-plan.md](test-plan.md) § Open decisions.

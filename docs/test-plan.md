@@ -36,7 +36,7 @@ Behaviour is agreed here first, before any test or code — see
 |---|---|
 | `tests/spec_stubs.py` | The consumer-shaped enums the suite's settings point at. Imports nothing but `evennia_effects_conditions.specs`, because `ready()` resolves it during `django.setup()`. Grows variant stubs as cases need them |
 | `tests/raising_spec_module.py` | A consumer module that raises on import — the negative fixture for `CF-06`, kept in its own file so importing the good stubs never trips it |
-| `tests/game_typeclasses.py` | The mixins on plain `DefaultObject`s — deliberately not a character, pinning that the library asks nothing of its holder's class. The stubs record their own `msg()`, `effects_broadcast()` and `at_effects_changed()` calls so cases read what arrived; `RaisingHookStub` is the EF-08 unwind fixture; `ExtraSourceStub` overrides `at_post_bucket_effects()` to record what it was handed and add one payload of its own, for `GB-03` and `GB-04`. Imported inside test bodies, never named in settings |
+| `tests/game_typeclasses.py` | The mixins on plain `DefaultObject`s — deliberately not a character, pinning that the library asks nothing of its holder's class. The stubs record their own `msg()`, `effects_broadcast()` and `at_effects_changed()` calls so cases read what arrived; `TransitionRecordingStub` records each `at_effect_transition()` call instead of delivering, for `CN-19` and `CN-21`; `RaisingHookStub` is the EF-08 unwind fixture; `ExtraSourceStub` overrides `at_post_bucket_effects()` to record what it was handed and add one payload of its own, for `GB-03` and `GB-04`. Imported inside test bodies, never named in settings |
 
 The SP cases use no fixtures — they declare consumer-shaped enums inline, pure stdlib.
 
@@ -172,11 +172,12 @@ reports the 0→1 transition, `remove_condition()` the →0 transition, and mess
 only on those transitions — an increment or decrement in between is silent. Both accept a member
 or a raw key string.
 
-Messaging follows [design.md](design.md) § Messages: the spec's text, first person delivered by
-the library (`holder.msg`), third person through the one `effects_broadcast(template)` seam. The
-default broadcast formats `{name}` with the holder's key and sends to the holder's location
-excluding the holder; an override receives the template unformatted so a game can render the name
-per observer.
+Messaging follows [design.md](design.md) § Messages: the spec's text, handed to one hook,
+`at_effect_transition(key, transition, first, third)`, at every start and end — a condition's and an
+effect's alike. Its default delivers first person to the holder (`holder.msg`) and third person through
+`effects_broadcast(template)`, which formats `{name}` with the holder's key and sends to the holder's
+location excluding the holder. A game overrides the hook to deliver both lines its own way, or only
+`effects_broadcast` to filter the third.
 
 **Divergence from the extracted system, for sign-off with these cases:** FCM's mixin ref-counts
 any string it is handed. Here a key the catalogue does not declare is refused with `ValueError` —
@@ -204,6 +205,9 @@ name.
 | CN-16 | It fires for each condition `clear_all_effects()` clears | `test_cn_16_the_hook_fires_for_each_condition_a_full_strip_clears` |
 | CN-17 | It fires whether or not the effect carried a stat payload | `test_cn_17_the_hook_fires_whether_or_not_a_payload_was_carried` |
 | CN-18 | It is a no-op on the mixin, so a consumer answering nothing is not an error | `test_cn_18_the_hook_is_a_no_op_on_the_mixin` |
+| CN-19 | Every transition's lines go to `at_effect_transition(key, transition, first, third)` — a condition's 0→1 add and →0 remove, an effect's apply and removal — with `"start"` or `"end"`, and the lines after the fallback rule; an empty line arrives empty | `test_cn_19_every_transition_goes_to_the_hook` |
+| CN-20 | The default `at_effect_transition` sends `first` to the holder and `third` through `effects_broadcast`, each only when it is not empty | `test_cn_20_the_default_hook_delivers_as_before` |
+| CN-21 | An `at_effect_transition` override replaces the delivery: nothing reaches `holder.msg` or `effects_broadcast` from a transition | `test_cn_21_an_override_replaces_the_delivery` |
 
 **`at_conditions_changed()` is the second consumer seam, and it is not `at_effects_changed()`.**
 That one means *this actor's derived stats are now wrong*, and it is deliberately silent for an effect

@@ -123,13 +123,19 @@ class Character(EffectsMixin, DefaultCharacter):
         """React to something becoming true of this character, or ceasing to be."""
         # condition is the key; is_held is True on arrival, False on departure
 
+    def at_effect_transition(self, key, transition, first, third):
+        """Deliver a condition's or an effect's start or end messages your own way."""
+        # transition is "start" or "end"; "" means deliberately silent
+
     def effects_broadcast(self, template):
         """Filter third-person effect messages, if your game has concealment."""
         # the template arrives with {name} unformatted
 ```
 
-All three default to doing nothing, so a game takes only the ones it needs. The default broadcast
-sends to the holder's room, unfiltered.
+The first two default to doing nothing, so a game takes only the ones it needs. The default
+`at_effect_transition` sends `first` to the holder and `third` through `effects_broadcast`, whose
+default sends to the holder's room, unfiltered. Override `at_effect_transition` to deliver both lines
+yourself, or only `effects_broadcast` to filter the third.
 
 **The first two answer different questions, and the difference matters.**
 

@@ -139,6 +139,7 @@ class ConditionsMixin:
         if newly_active:
             self._deliver_transition_messages(
                 key,
+                transition="start",
                 first=spec.start_first,
                 third=spec.start_third,
                 fallback_first=f"You are now affected by {key}.",
@@ -157,6 +158,7 @@ class ConditionsMixin:
         if fully_cleared:
             self._deliver_transition_messages(
                 key,
+                transition="end",
                 first=spec.end_first,
                 third=spec.end_third,
                 fallback_first=f"You are no longer affected by {key}.",
@@ -167,20 +169,32 @@ class ConditionsMixin:
     # ── messaging ──────────────────────────────────────────────────── #
 
     def _deliver_transition_messages(
-        self, key, first, third, fallback_first, fallback_third
+        self, key, transition, first, third, fallback_first, fallback_third
     ):
-        """Deliver one transition's messages under the two-rule convention.
+        """Resolve one transition's messages under the two-rule convention and
+        hand them to ``at_effect_transition``.
 
         A ``None`` field falls back to the generated generic; an empty
-        string is deliberately silent. First person goes to the holder
-        directly; third person goes through the ``effects_broadcast`` seam.
+        string is deliberately silent.
         """
         if first is None:
             first = fallback_first
-        if first:
-            self.msg(first)
         if third is None:
             third = fallback_third
+        self.at_effect_transition(key, transition, first, third)
+
+    def at_effect_transition(self, key, transition, first, third):
+        """Deliver one start or end of a condition or an effect.
+
+        THE consumer override point for transition messages — see
+        ``docs/design.md`` § Messages. ``key`` is the condition's or the
+        effect's, ``transition`` is ``"start"`` or ``"end"``, and ``first``
+        and ``third`` are the lines after the fallback rule, ``""`` where
+        deliberately silent. This default sends ``first`` to the holder and
+        ``third`` through ``effects_broadcast``, each only when not empty.
+        """
+        if first:
+            self.msg(first)
         if third:
             self.effects_broadcast(third)
 
@@ -400,6 +414,7 @@ class EffectsMixin(ConditionsMixin):
 
         self._deliver_transition_messages(
             key_str,
+            transition="start",
             first=resolved_messages["start_first"],
             third=resolved_messages["start_third"],
             fallback_first=f"You are now affected by {key_str}.",
@@ -485,6 +500,7 @@ class EffectsMixin(ConditionsMixin):
         messages = record.get("messages", {})
         self._deliver_transition_messages(
             key_str,
+            transition="end",
             first=messages.get("end_first"),
             third=messages.get("end_third"),
             fallback_first=f"You are no longer affected by {key_str}.",

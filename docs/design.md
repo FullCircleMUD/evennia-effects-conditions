@@ -207,10 +207,13 @@ Specs carry four message fields: start and end, each in first and third person. 
 
 - **A missing field falls back to a generated generic; an empty string is deliberately silent.**
   The two are different statements and both are needed.
-- **First person the library delivers itself** (`self.msg`) — there is no filtering question in
-  telling an actor about their own state. **Third person goes through one overridable method**,
-  `effects_broadcast(template)`, whose default is a naive broadcast to the holder's location. A
-  game with concealment overrides that one method with its own visibility filtering; the library
+- **Every start and end goes through one overridable method**, `at_effect_transition(key,
+  transition, first, third)` — a condition's and an effect's alike, `transition` `"start"` or
+  `"end"`, the lines after the fallback rule. A game with its own messaging overrides it and delivers
+  both lines itself.
+- **Its default delivers first person itself** (`self.msg`) and **third person through
+  `effects_broadcast(template)`**, whose default is a naive broadcast to the holder's location. A game
+  that only needs concealment overrides that one method with its own visibility filtering; the library
   never learns the game has concealment. The template reaches the override unformatted (`{name}`
   intact) so a game can render the name per observer.
 

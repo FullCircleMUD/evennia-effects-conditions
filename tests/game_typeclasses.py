@@ -118,6 +118,25 @@ class EffectsObjectStub(EffectsMixin, DefaultObject):
         super().at_effects_changed()
 
 
+class TransitionRecordingStub(EffectsObjectStub):
+    """A holder whose transition hook records instead of delivering — CN-19
+    and CN-21.
+
+    The override deliberately does not call ``super()``: it stands for a game
+    that delivers both lines its own way.
+    """
+
+    @property
+    def transitions(self):
+        """Every `at_effect_transition()` call, as (key, transition, first, third)."""
+        if self.ndb.transitions is None:
+            self.ndb.transitions = []
+        return self.ndb.transitions
+
+    def at_effect_transition(self, key, transition, first, third):
+        self.transitions.append((key, transition, first, third))
+
+
 class RaisingHookStub(EffectsObjectStub):
     """A holder whose recalculate hook raises — the EF-08 unwind fixture.
 

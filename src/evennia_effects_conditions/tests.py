@@ -871,6 +871,67 @@ class ConditionsChangedHookTests(DjangoTestCase):
         self.assertFalse(plain.has_condition("hidden"))
 
 
+class TransitionHookTests(DjangoTestCase):
+    """The one hook every start and end's lines go through (CN-19 to CN-21)."""
+
+    def setUp(self):
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import EffectsObjectStub, TransitionRecordingStub
+
+        self.recorder = create_object(TransitionRecordingStub, key="recorder")
+        self.holder = create_object(EffectsObjectStub, key="holder")
+
+    def test_cn_19_every_transition_goes_to_the_hook(self):
+        """CN-19"""
+        recorder = self.recorder
+        recorder.add_condition("hidden")
+        recorder.remove_condition("hidden")
+        recorder.apply_named_effect("blessed", duration=1)
+        recorder.remove_named_effect("blessed")
+        self.assertEqual(
+            recorder.transitions,
+            [
+                ("hidden", "start", "You blend into the shadows.", "{name} melts into the shadows."),
+                ("hidden", "end", "You step out of the shadows.", "{name} steps out of the shadows."),
+                ("blessed", "start", "You are blessed!", "{name} glows."),
+                ("blessed", "end", "The blessing fades.", "{name} stops glowing."),
+            ],
+        )
+
+        # The fallback rule has run before the hook; an empty line arrives empty.
+        recorder.transitions.clear()
+        recorder.add_condition("dazzled")
+        recorder.add_condition("muted")
+        (dazzled, muted) = recorder.transitions
+        self.assertEqual(dazzled[:2], ("dazzled", "start"))
+        self.assertIn("dazzled", dazzled[2])
+        self.assertIn("dazzled", dazzled[3])
+        self.assertEqual(muted, ("muted", "start", "", ""))
+
+    def test_cn_20_the_default_hook_delivers_as_before(self):
+        """CN-20"""
+        self.holder.at_effect_transition("hidden", "start", "First.", "{name} third.")
+        self.assertEqual(self.holder.received, ["First."])
+        self.assertEqual(self.holder.broadcasts, ["{name} third."])
+
+        self.holder.received.clear()
+        self.holder.broadcasts.clear()
+        self.holder.at_effect_transition("hidden", "end", "", "")
+        self.assertEqual(self.holder.received, [])
+        self.assertEqual(self.holder.broadcasts, [])
+
+    def test_cn_21_an_override_replaces_the_delivery(self):
+        """CN-21"""
+        recorder = self.recorder
+        recorder.add_condition("hidden")
+        recorder.remove_condition("hidden")
+        recorder.apply_named_effect("blessed", duration=1)
+        recorder.remove_named_effect("blessed")
+        self.assertEqual(recorder.received, [])
+        self.assertEqual(recorder.broadcasts, [])
+
+
 class EffectsMixinCoreTests(DjangoTestCase):
     """The effects mixin core — apply, remove, query, the hook (EF)."""
 
