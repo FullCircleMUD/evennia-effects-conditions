@@ -25,6 +25,11 @@ from evennia_effects_conditions.config import (
 from evennia_effects_conditions.payloads import InvalidPayloadError, bucket_effects
 
 
+def _worded(member):
+    """A catalogue member's name as words — ``LIGHT_SPELL`` is ``Light Spell``."""
+    return member.name.replace("_", " ").title()
+
+
 class ConditionsMixin:
     """Ref-counted condition flags on a holder.
 
@@ -61,6 +66,24 @@ class ConditionsMixin:
         return member.value, member.spec
 
     # ── the counter ────────────────────────────────────────────────── #
+
+    def describe_conditions(self):
+        """The conditions held, as a line a player reads, or ``[]`` with none.
+
+        ::
+
+            holder.describe_conditions()    # ["Conditions: Darkvision, Hidden"]
+
+        Names only, in the order the consumer's enum declares them, each
+        member's name with its underscores as spaces and title-cased. See DS.
+        """
+        from evennia_effects_conditions.config import get_condition_enum
+
+        held = self.conditions or {}
+        names = [
+            _worded(member) for member in get_condition_enum() if held.get(member.value)
+        ]
+        return [f"Conditions: {', '.join(names)}"] if names else []
 
     def has_condition(self, condition):
         """Return True if the condition is active (ref count > 0)."""
@@ -518,6 +541,23 @@ class EffectsMixin(ConditionsMixin):
         return True
 
     # ── queries ────────────────────────────────────────────────────── #
+
+    def describe_effects(self):
+        """The effects active, as a line a player reads, or ``[]`` with none.
+
+        ::
+
+            holder.describe_effects()       # ["Effects: Armored, Hasted"]
+
+        Names only — what is active, not how long it lasts — in the order the
+        consumer's enum declares them, worded as ``describe_conditions`` words
+        a condition. See DS.
+        """
+        from evennia_effects_conditions.config import get_effect_enum
+
+        active = self.active_effects or {}
+        names = [_worded(member) for member in get_effect_enum() if member.value in active]
+        return [f"Effects: {', '.join(names)}"] if names else []
 
     def has_effect(self, key):
         """Return True if the named effect is active."""

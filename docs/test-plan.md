@@ -29,6 +29,7 @@ Behaviour is agreed here first, before any test or code — see
 | `CL` | `clear_all_effects()` — the silent full strip for death-shaped moments |
 | `PB` | `bucket_effects()` — grouping a store's payloads by their type |
 | `GB` | `get_effect_buckets()` and `at_post_bucket_effects()` — a holder's payloads by type, and the seam for sources outside the store |
+| `DS` | `describe_conditions()` and `describe_effects()` — what a holder has, as lines a player reads |
 
 ## Fixtures
 
@@ -527,6 +528,25 @@ calls it where it would otherwise call `bucket_effects()`.
 
 GB-04 guards the shortcut. An early return on an empty store would skip the hook, and a holder with
 no effects applied would lose everything its other sources contribute.
+
+## DS — what a holder has, as lines a player reads
+
+`describe_conditions()` on the conditions mixin and `describe_effects()` on the effects mixin each
+answer a list of lines — the shape a game's description of an actor asks of each part. Names only:
+what the holder has, not how long it lasts. Each name is the catalogue member's, its underscores as
+spaces and title-cased, in the order the consumer's enum declares them.
+
+```
+describe_conditions()   → ["Conditions: Darkvision, Hidden"]
+describe_effects()      → ["Effects: Armored, Hasted"]
+```
+
+| ID | Case | Test function |
+|---|---|---|
+| DS-01 | `describe_conditions()` names every condition held, in the condition enum's order, after `"Conditions: "` and joined with `", "` | `test_ds_01_conditions_held_are_named` |
+| DS-02 | A condition whose count has fallen to zero is not named | `test_ds_02_a_released_condition_is_not_named` |
+| DS-03 | `describe_effects()` names every active effect, in the effect enum's order, after `"Effects: "` and joined with `", "` | `test_ds_03_active_effects_are_named` |
+| DS-04 | A holder with no condition, or no effect, answers `[]` for that line | `test_ds_04_nothing_held_answers_nothing` |
 
 ## Open decisions
 

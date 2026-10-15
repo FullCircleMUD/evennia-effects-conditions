@@ -2111,3 +2111,43 @@ class EffectBucketsTests(DjangoTestCase):
             self.extra.get_effect_buckets(),
             {"size_shift": [self.extra.EXTRA]},
         )
+
+
+class DescribeTests(DjangoTestCase):
+    """What a holder has, as lines a player reads (DS)."""
+
+    def setUp(self):
+        from evennia.utils.create import create_object
+
+        from tests.game_typeclasses import EffectsObjectStub
+
+        self.holder = create_object(EffectsObjectStub, key="holder")
+
+    def test_ds_01_conditions_held_are_named(self):
+        """DS-01"""
+        # Added out of the enum's order; named in it.
+        self.holder.add_condition("glowing")
+        self.holder.add_condition("hidden")
+        self.assertEqual(
+            self.holder.describe_conditions(), ["Conditions: Hidden, Glowing"]
+        )
+
+    def test_ds_02_a_released_condition_is_not_named(self):
+        """DS-02"""
+        self.holder.add_condition("hidden")
+        self.holder.add_condition("dazzled")
+        self.holder.remove_condition("dazzled")
+        self.assertEqual(self.holder.describe_conditions(), ["Conditions: Hidden"])
+
+    def test_ds_03_active_effects_are_named(self):
+        """DS-03"""
+        self.holder.apply_named_effect("poisoned")
+        self.holder.apply_named_effect("stunned", duration=2)
+        self.assertEqual(
+            self.holder.describe_effects(), ["Effects: Stunned, Poisoned"]
+        )
+
+    def test_ds_04_nothing_held_answers_nothing(self):
+        """DS-04"""
+        self.assertEqual(self.holder.describe_conditions(), [])
+        self.assertEqual(self.holder.describe_effects(), [])
