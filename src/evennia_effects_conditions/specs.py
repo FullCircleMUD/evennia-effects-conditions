@@ -98,11 +98,15 @@ class PayloadSpec:
         at_validate: the consumer's own check, called as
             ``at_validate(payload)`` once the shape check passes. It refuses
             by raising; its return value is ignored.
+        at_describe: the consumer's wording, called as
+            ``at_describe(payload)`` by ``describe()``. Returns the payload as
+            words a player reads.
     """
 
     key: str
     fields: Sequence[str]
     at_validate: Optional[Callable] = None
+    at_describe: Optional[Callable] = None
 
     def __post_init__(self):
         # A bare string is refused here rather than at boot: the snapshot
@@ -164,6 +168,23 @@ class PayloadSpec:
 
         if self.at_validate:
             self.at_validate(payload)
+
+    def describe(self, payload):
+        """One payload as words a player reads — what ``at_describe`` answers.
+
+        What a value means is the consumer's, so the words are too; the
+        library only asks for them.
+
+        Raises:
+            NotImplementedError: this spec was declared without
+                ``at_describe``, so there are no words to give.
+        """
+        if self.at_describe is None:
+            raise NotImplementedError(
+                f"a {self.key!r} payload cannot be described — its PayloadSpec "
+                f"declares no at_describe."
+            )
+        return self.at_describe(payload)
 
 
 def _spec_member(cls, spec, spec_class):

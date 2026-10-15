@@ -299,6 +299,11 @@ def _payload_member_problems(enum_cls):
                 f"{SETTING_PAYLOAD_ENUM} member {spec.key!r}: at_validate "
                 f"must be callable or None, got {spec.at_validate!r}."
             )
+        if spec.at_describe is not None and not callable(spec.at_describe):
+            problems.append(
+                f"{SETTING_PAYLOAD_ENUM} member {spec.key!r}: at_describe "
+                f"must be callable or None, got {spec.at_describe!r}."
+            )
     return problems
 
 

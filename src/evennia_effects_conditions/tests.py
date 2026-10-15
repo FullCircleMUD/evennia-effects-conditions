@@ -297,6 +297,30 @@ class SpecTests(TestCase):
         with self.assertRaises(TypeError):
             PayloadSpec("size_shift", fields=("value"))
 
+    def test_sp_23_at_describe_defaults_to_none(self):
+        """SP-23"""
+        self.assertIsNone(PayloadSpec("size_shift", fields=("value",)).at_describe)
+
+    def test_sp_24_describe_answers_at_describes_words(self):
+        """SP-24"""
+        seen = []
+
+        def word(payload):
+            seen.append(payload)
+            return f"+{payload['value']} {payload['stat'].title()}"
+
+        spec = PayloadSpec("stat_bonus", fields=("stat", "value"), at_describe=word)
+        payload = {"type": "stat_bonus", "stat": "strength", "value": 2}
+        self.assertEqual(spec.describe(payload), "+2 Strength")
+        self.assertEqual(seen, [payload])
+
+    def test_sp_25_describe_without_at_describe_raises(self):
+        """SP-25"""
+        spec = PayloadSpec("stat_bonus", fields=("stat", "value"))
+        with self.assertRaises(NotImplementedError) as ctx:
+            spec.describe({"type": "stat_bonus", "stat": "strength", "value": 2})
+        self.assertIn("stat_bonus", str(ctx.exception))
+
 
 class BootCheckTests(SimpleTestCase):
     """The settings and the boot check (CF)."""
@@ -594,6 +618,14 @@ class BootCheckTests(SimpleTestCase):
         from tests.spec_stubs import GoodPayloads
 
         self.assertIs(get_payload_enum(), GoodPayloads)
+
+    def test_cf_30_a_non_callable_at_describe_is_refused(self):
+        """CF-30"""
+        message = self._refusal(
+            **{SETTING_PAYLOAD_ENUM: "tests.spec_stubs.BadAtDescribePayloads"}
+        )
+        self.assertIn("broken", message)
+        self.assertIn("at_describe", message)
 
 
 class ConditionsMixinTests(DjangoTestCase):

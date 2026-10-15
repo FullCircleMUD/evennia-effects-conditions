@@ -282,7 +282,8 @@ their content rides in `extras`, read by the consumer's tick hook.
 
 - **Interpreting effect payloads.** No stat names, no bonus arithmetic, no damage types. The
   library checks a payload's shape against the consumer's `PayloadSpec`; what its values mean, and
-  any check on them, is the consumer's — `at_validate` is where that check goes.
+  any check on them, is the consumer's — `at_validate` is where that check goes. Wording one for a
+  player is the consumer's too: `PayloadSpec.describe()` only asks the spec's `at_describe`.
 - **Convenience wrappers** (`apply_stunned(…)`-style). Sugar over `apply_named_effect()` is the
   consumer's four lines per effect.
 - **Policy sets** — what breaks on a hostile action, what incapacitates, what blocks movement.

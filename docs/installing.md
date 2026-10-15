@@ -81,6 +81,10 @@ raising. `apply_named_effect()` checks every payload it is handed before doing a
 the whole call with `InvalidPayloadError` — or your `at_validate`'s own error — if one fails. A game
 whose effects carry no payloads declares an empty `PayloadType` subclass.
 
+`at_describe` is optional too: your wording for a payload, `at_describe(payload)` returning the words
+a player reads — `"+2 Strength"`. `spec.describe(payload)` calls it, and raises
+`NotImplementedError` for a spec declared without one.
+
 ## 5. Point the settings at it
 
 ```python

@@ -236,5 +236,11 @@ class BadAtValidatePayloads(PayloadType):
     BROKEN = PayloadSpec("broken", fields=("value",), at_validate="not-callable")
 
 
+class BadAtDescribePayloads(PayloadType):
+    """CF-30 — an at_describe that is not callable."""
+
+    BROKEN = PayloadSpec("broken", fields=("value",), at_describe="not-callable")
+
+
 #: CF-07 — a dotted path can resolve to something that is not a class.
 NOT_A_CLASS = "just a string"

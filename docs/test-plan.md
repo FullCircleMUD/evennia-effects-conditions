@@ -90,6 +90,10 @@ naming what is wrong. Only then does it call the spec's `at_validate(payload)`, 
 the consumer's own check on values, refusing by raising. Checking what a value *means* stays with the
 consumer; the library checks shape.
 
+`PayloadSpec.describe(payload)` answers the payload as words a player reads, by calling the spec's
+`at_describe(payload)` — the consumer's wording, since what a value means is the consumer's. A spec
+declared without one cannot be described, and asking raises rather than inventing words.
+
 `PayloadSpec` is independent of the other two spec classes, for the reason given above.
 
 | ID | Case | Test function |
@@ -107,6 +111,9 @@ consumer; the library checks shape.
 | SP-20 | `at_validate` is called with the payload only once the shape check passes, and not at all when it fails | `test_sp_20_at_validate_runs_only_after_the_shape_check_passes` |
 | SP-21 | An exception raised by `at_validate` reaches the caller unchanged | `test_sp_21_an_at_validate_exception_reaches_the_caller_unchanged` |
 | SP-22 | A `PayloadSpec` whose `fields` is a bare string is refused at declaration — `("value")` without its comma, which the snapshot would otherwise read a letter at a time | `test_sp_22_a_bare_string_fields_is_refused_at_declaration` |
+| SP-23 | A `PayloadSpec` declared without `at_describe` has it `None` | `test_sp_23_at_describe_defaults_to_none` |
+| SP-24 | `describe(payload)` calls `at_describe` with the payload and answers what it returns | `test_sp_24_describe_answers_at_describes_words` |
+| SP-25 | `describe()` on a spec with no `at_describe` raises `NotImplementedError`, naming the payload type | `test_sp_25_describe_without_at_describe_raises` |
 
 ## CF — the settings and the boot check
 
@@ -163,6 +170,7 @@ case — see [design.md](design.md) § The catalogue.
 | CF-27 | A payload member whose `at_validate` is neither callable nor `None` is refused, naming the member | `test_cf_27_a_non_callable_at_validate_is_refused` |
 | CF-28 | An empty payload enum is allowed — a game with no payloads declares one | `test_cf_28_an_empty_payload_enum_is_allowed` |
 | CF-29 | `get_payload_enum()` returns the resolved class | `test_cf_29_the_payload_accessor_returns_the_resolved_class` |
+| CF-30 | A payload member whose `at_describe` is neither callable nor `None` is refused, naming the member | `test_cf_30_a_non_callable_at_describe_is_refused` |
 
 ## CN — the conditions mixin
 
