@@ -2,6 +2,12 @@
 
 Running log of milestones with links to evidence. Reverse chronological — newest first.
 
+## 2026-11-07 — the wall clock pauses and resumes
+
+169 tests, all passing. `LC-14` to `LC-20`: `pause_wall_clock()` writes each running timer's time
+left into its record and stops it; `resume_wall_clock()` starts a timer from the record. A wall-clock
+effect keeps its time left across anything that copies only Attributes.
+
 ## 2026-09-30 — payload types, declared and validated
 
 145 tests, all passing. The consumer declares its payload types and every payload is checked at

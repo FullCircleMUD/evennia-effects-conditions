@@ -33,8 +33,8 @@ a while, more than one thing can make it true, and it has to come off cleanly.
 ## The shape
 
 The library holds the machinery — ref-counted condition flags, tracked anti-stacking effect
-records, countdown lifecycles you step from your own events, one library-driven wall clock, break
-and clear verbs. Your game declares the catalogue (three enums of frozen specs — conditions, effects and payload
+records, countdown lifecycles you step from your own events, one library-driven wall clock you can
+pause and resume, break and clear verbs. Your game declares the catalogue (three enums of frozen specs — conditions, effects and payload
 types — named in settings and validated at boot) and answers up to four hooks: `at_effects_changed()` rebuilds whatever you mean
 by stats, `at_conditions_changed()` reacts to something becoming true of an actor or ceasing to be,
 `at_effect_transition()` delivers the start and end messages your own way, and `effects_broadcast()`

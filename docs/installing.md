@@ -174,6 +174,14 @@ character.clear_effects("combat_rounds")             # when combat ends
 
 The wall clock needs no driving — applying with it and a duration sets its own one-shot timer.
 
+The timer is a script, and a script does not travel with a restored copy of its holder — an archive,
+a move between instances. Pause where the clock should stop, and resume where it should start again:
+
+```python
+character.pause_wall_clock()    # each timer's time left written into its record; timers stopped
+character.resume_wall_clock()   # a timer started from each record's time left
+```
+
 Applying an effect that is already active returns False and changes nothing, unless the caller says
 otherwise:
 

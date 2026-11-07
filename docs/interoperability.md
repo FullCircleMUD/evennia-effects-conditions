@@ -33,8 +33,9 @@ table at all is open. An NPC that remembers being poisoned is the consumer compo
 it. **The wall-clock timer script does not** — it is a separate script entity, not an Attribute. A
 restored wall-clock record therefore has no clock: it stays until something removes it, and
 `get_effect_remaining_seconds()` answers None. Countdown records are unaffected — their remaining
-steps are in the record itself. A consumer restoring actors decides whether to strip, re-time or
-keep such records; `clear_all_effects()` is the strip.
+steps are in the record itself. A consumer whose actors are archived calls `pause_wall_clock()`
+before the archive, which writes each timer's time left into its record, and `resume_wall_clock()`
+once the actor is back in play. `clear_all_effects()` strips them instead.
 
 ## evennia-calendar
 
@@ -101,7 +102,8 @@ without changing it; nothing about a condition is session state.
 
 **No coupling.** Neither library imports the other. Instances are independent, and a character
 crossing between them moves as archived state — so the answer is archive's answer: the records
-travel, the wall-clock timer script does not, and a wall-clock effect arrives with no clock.
+travel, the wall-clock timer script does not, and a wall-clock effect arrives with no clock unless
+it was paused before leaving and is resumed on arrival.
 Countdown effects arrive intact, since the destination's own events step them.
 
 ## evennia-shards

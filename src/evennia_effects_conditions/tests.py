@@ -1764,6 +1764,100 @@ class LifecycleTests(DjangoTestCase):
         self.assertFalse(self.holder.scripts.get("effect_timer_invisible"))
         self.assertTrue(self.holder.has_effect("invisible"))
 
+    # ── pausing and resuming the wall clock ────────────────────────── #
+
+    def _age_timer(self, key, seconds):
+        """Move a timer's start back by ``seconds``, as if that long had run."""
+        script = self.holder.scripts.get("effect_timer_" + key)[0]
+        script.start_time = script.start_time - seconds
+
+    def test_lc_14_pause_writes_the_time_left_and_stops_the_timer(self):
+        """LC-14"""
+        self.holder.apply_named_effect("invisible", duration=300)
+        self._age_timer("invisible", 100.4)
+        self.assertEqual(self.holder.pause_wall_clock(), ["invisible"])
+        self.assertEqual(self.holder.get_named_effect("invisible")["duration"], 200)
+        self.assertFalse(self.holder.scripts.get("effect_timer_invisible"))
+
+        # Under a second left, or none, is still a whole second.
+        for aged in (299.7, 400):
+            self.holder.remove_named_effect("invisible")
+            self.holder.apply_named_effect("invisible", duration=300)
+            self._age_timer("invisible", aged)
+            self.holder.pause_wall_clock()
+            self.assertEqual(self.holder.get_named_effect("invisible")["duration"], 1)
+
+    def test_lc_15_pause_touches_only_running_wall_clock_records(self):
+        """LC-15"""
+        self.holder.apply_named_effect("gated", duration=30)
+        self.holder.apply_named_effect("invisible", duration=None)
+        self.holder.apply_named_effect("stunned", duration=3)
+        self.assertEqual(self.holder.pause_wall_clock(), ["gated"])
+        self.assertIsNone(self.holder.get_named_effect("invisible")["duration"])
+        self.assertEqual(self.holder.get_named_effect("stunned")["duration"], 3)
+
+    def test_lc_16_resume_starts_a_timer_from_the_duration(self):
+        """LC-16"""
+        self.holder.apply_named_effect("invisible", duration=300)
+        self.holder.pause_wall_clock()
+        self.assertEqual(self.holder.resume_wall_clock(), ["invisible"])
+        scripts = self.holder.scripts.get("effect_timer_invisible")
+        self.assertEqual(len(scripts), 1)
+        self.assertEqual(scripts[0].interval, 300)
+        remaining = self.holder.get_effect_remaining_seconds("invisible")
+        self.assertGreater(remaining, 299)
+        self.assertLessEqual(remaining, 300)
+
+    def test_lc_17_resume_leaves_a_running_timer_alone(self):
+        """LC-17"""
+        self.holder.apply_named_effect("invisible", duration=300)
+        self._age_timer("invisible", 100)
+        self.assertEqual(self.holder.resume_wall_clock(), [])
+        self.assertEqual(len(self.holder.scripts.get("effect_timer_invisible")), 1)
+        remaining = self.holder.get_effect_remaining_seconds("invisible")
+        self.assertGreater(remaining, 199)
+        self.assertLessEqual(remaining, 200)
+
+    def test_lc_18_pause_then_resume_keeps_the_time_left(self):
+        """LC-18"""
+        self.holder.apply_named_effect("invisible", duration=300)
+        self._age_timer("invisible", 100.4)
+        self.holder.pause_wall_clock()
+        self.holder.resume_wall_clock()
+        remaining = self.holder.get_effect_remaining_seconds("invisible")
+        self.assertGreater(remaining, 199)
+        self.assertLessEqual(remaining, 200)
+
+    def test_lc_19_a_resumed_timer_removes_the_effect_when_it_fires(self):
+        """LC-19"""
+        self.holder.apply_named_effect("invisible", duration=300)
+        self.holder.pause_wall_clock()
+        self.holder.resume_wall_clock()
+        self.holder.scripts.get("effect_timer_invisible")[0].at_repeat()
+        self.assertIsNone(self.holder.get_named_effect("invisible"))
+        self.assertFalse(self.holder.has_condition("hidden"))
+
+    def test_lc_20_pause_and_resume_are_silent(self):
+        """LC-20"""
+        from tests.spec_stubs import CALLBACK_LOG
+
+        self.holder.apply_named_effect(
+            "gated", duration=30, effects=[{"type": "size_shift", "value": 1}]
+        )
+        self.holder.received.clear()
+        self.holder.broadcasts.clear()
+        self.holder.hook_calls.clear()
+        CALLBACK_LOG.clear()
+
+        self.holder.pause_wall_clock()
+        self.holder.resume_wall_clock()
+
+        self.assertEqual(self.holder.received, [])
+        self.assertEqual(self.holder.broadcasts, [])
+        self.assertEqual(self.holder.hook_calls, [])
+        self.assertEqual(CALLBACK_LOG, [])
+        self.assertEqual(self.holder.get_condition_count("glowing"), 1)
+
 
 class BreakVerbTests(DjangoTestCase):
     """The break verbs — forced, silent removal (BK)."""

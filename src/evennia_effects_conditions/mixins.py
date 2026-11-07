@@ -10,6 +10,7 @@ records and their lifecycle — see ``docs/design.md``.
 # reading as plain properties; the library sets them by assignment throughout.
 from evennia.typeclasses.attributes import AttributeProperty
 
+import math
 import time
 from collections import abc
 
@@ -690,6 +691,57 @@ class EffectsMixin(ConditionsMixin):
         if start_time is None:
             return None
         return max(0, record["duration"] - (time.time() - start_time))
+
+    def pause_wall_clock(self):
+        """Stop every running wall-clock timer, keeping the time it has left.
+
+        A timer is a script, so its time left is not in ``active_effects``.
+        This writes it there — each record's ``duration`` becomes its seconds
+        left, whole and rounded up, at least 1 — and deletes the timer.
+        Call it where the holder's clock should stop; ``resume_wall_clock()``
+        starts it again. Not a removal: no messages, no hooks, no callbacks,
+        and the condition refs stay.
+
+        Returns:
+            list — the keys paused, in record order.
+        """
+        paused = []
+        records = dict(self.active_effects)
+        for key, record in records.items():
+            if record.get("lifecycle") != WALL_CLOCK:
+                continue
+            remaining = self.get_effect_remaining_seconds(key)
+            if remaining is None:
+                continue
+            updated = dict(record)
+            updated["duration"] = max(1, math.ceil(remaining))
+            records[key] = updated
+            self._stop_effect_timer(key)
+            paused.append(key)
+        if paused:
+            self.active_effects = records
+        return paused
+
+    def resume_wall_clock(self):
+        """Start a timer for every wall-clock record with a duration and none.
+
+        The timer runs for the record's ``duration`` — what
+        ``pause_wall_clock()`` left there. A record whose timer is already
+        running is left alone. Not an apply: no messages, no hooks, no
+        callbacks, and the condition refs stay.
+
+        Returns:
+            list — the keys resumed, in record order.
+        """
+        resumed = []
+        for key, record in dict(self.active_effects).items():
+            if record.get("lifecycle") != WALL_CLOCK or record.get("duration") is None:
+                continue
+            if self.scripts.get(TIMER_SCRIPT_PREFIX + key):
+                continue
+            self._start_effect_timer(key, record["duration"])
+            resumed.append(key)
+        return resumed
 
     def _start_effect_timer(self, key, duration_seconds):
         """Create the one-shot wall-clock timer for an applied effect."""

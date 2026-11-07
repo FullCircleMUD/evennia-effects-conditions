@@ -180,6 +180,10 @@ Every effect record is on exactly one lifecycle:
   unit with no game event to ride on. Applying with the reserved wall-clock lifecycle and a
   duration creates a one-shot persistent script that removes the effect when it fires. No ticking;
   one deferred callback. `get_effect_remaining_seconds()` reads the script's start stamp.
+  The script holds the time left, and a script is not an Attribute, so the record carries it only
+  when told to: `pause_wall_clock()` writes each running timer's seconds left into its record's
+  `duration` and stops the timer, and `resume_wall_clock()` starts one from `duration`. The consumer
+  calls them where the holder's clock should stop and start again. Neither is an apply or a removal.
 - **Unmanaged** (`lifecycle=None`) — the library holds the record and something outside ends it by
   calling `remove_named_effect()`. DoT scripts are the standing example.
 

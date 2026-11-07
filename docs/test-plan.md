@@ -386,6 +386,12 @@ standing a large number in for infinity.
 `advance_effects()` refuses the wall-clock name — two clocks may not drive one record — and
 refuses an undeclared name, which is a typo by the same argument as CN-10.
 
+A wall-clock timer is a script, so the time it has left lives outside `active_effects`.
+`pause_wall_clock()` writes each running timer's seconds left into its record's `duration` and stops
+the timer; `resume_wall_clock()` starts a timer from `duration` for each record that has none. The
+consumer calls them where the clock should stop and start again. Neither is an apply or a removal:
+the effect never ended.
+
 | ID | Case | Test function |
 |---|---|---|
 | LC-01 | Advancing one lifecycle decrements only its own records — other countdowns, wall-clock and unmanaged records untouched | `test_lc_01_advance_touches_only_its_own_lifecycle` |
@@ -401,6 +407,13 @@ refuses an undeclared name, which is a typo by the same argument as CN-10.
 | LC-11 | Removing a wall-clock effect stops and deletes its timer script | `test_lc_11_removal_stops_and_deletes_the_timer` |
 | LC-12 | `get_effect_remaining_seconds()` counts down from the duration for a wall-clock record, and is None for other lifecycles and absent effects | `test_lc_12_remaining_seconds_counts_down_for_the_wall_clock_only` |
 | LC-13 | A wall-clock apply with `duration=None` starts no timer — permanent until removed | `test_lc_13_a_wall_clock_apply_with_no_duration_starts_no_timer` |
+| LC-14 | `pause_wall_clock()` writes each running wall-clock record's seconds left into its `duration` — whole seconds, rounded up, at least 1 — deletes its timer script, and returns the keys it paused | `test_lc_14_pause_writes_the_time_left_and_stops_the_timer` |
+| LC-15 | Pause leaves permanent wall-clock records (`duration=None`) and every other lifecycle untouched | `test_lc_15_pause_touches_only_running_wall_clock_records` |
+| LC-16 | `resume_wall_clock()` starts a timer from `duration` for each wall-clock record with a duration and no timer, returns the keys, and `get_effect_remaining_seconds()` agrees | `test_lc_16_resume_starts_a_timer_from_the_duration` |
+| LC-17 | Resume leaves a record whose timer is running alone — no second timer, its clock not reset | `test_lc_17_resume_leaves_a_running_timer_alone` |
+| LC-18 | Pause then resume: the time left after resume is the time left at pause | `test_lc_18_pause_then_resume_keeps_the_time_left` |
+| LC-19 | A resumed timer's firing removes the effect and its record | `test_lc_19_a_resumed_timer_removes_the_effect_when_it_fires` |
+| LC-20 | Neither pause nor resume sends messages, fires `at_effects_changed()` or `on_apply`, or touches condition refs | `test_lc_20_pause_and_resume_are_silent` |
 
 ## BK — the break verbs
 
